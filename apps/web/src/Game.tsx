@@ -32,7 +32,7 @@ const numberFormat = new Intl.NumberFormat('tr-TR');
 const secondsFormat = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
 const number = (value: number) => numberFormat.format(value);
 const seconds = (ms: number | null) => (ms === null ? '—' : `${secondsFormat.format(ms / 1000)} sn`);
-const keyboardRows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ'];
+const keyboardRows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ', 'ÂÎÛ'];
 const improvement: Record<Mark, number> = { absent: 0, present: 1, correct: 2 };
 const statusLabel: Record<PlayerView['status'], string> = {
   playing: 'Tahmin ediyor',

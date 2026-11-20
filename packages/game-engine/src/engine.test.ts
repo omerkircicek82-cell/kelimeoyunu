@@ -17,6 +17,14 @@ test('normalization preserves dotted and dotless Turkish I and composed characte
   assert.equal(isTurkishWord('İİİİ'), false);
 });
 
+test('circumflex vowels remain distinct and can be used in five-letter guesses', () => {
+  assert.equal(normalizeWord('ka\u0302tip'), 'KÂTİP');
+  assert.equal(normalizeWord('resmî'), 'RESMÎ');
+  assert.equal(normalizeWord('sükûn'), 'SÜKÛN');
+  for (const word of ['KÂTİP', 'RESMÎ', 'SÜKÛN']) assert.ok(isTurkishWord(word));
+  assert.deepEqual(evaluateGuess('KATİP', 'KÂTİP'), ['correct', 'absent', 'correct', 'correct', 'correct']);
+});
+
 test('scoring follows the fixed time and attempt bonuses', () => {
   assert.equal(calculatePoints(60_000, 2), 850);
   assert.equal(calculatePoints(20_000, 4), 616);

@@ -59,7 +59,7 @@ Prisma 7 istemcisi `npm ci` sırasında üretilir. `npm run migrate`, npm kilit 
 
 ## Kelime sözlüğü
 
-Migration, PostgreSQL'deki `DictionaryWord` tablosuna 4.821 beş harfli kelime ekler. `isAnswer` alanı açık olan 502 kelime maç cevabı olarak seçilebilir. Tablodaki tüm kelimeler tahmin olarak kabul edilir. API, listeyi açılışta belleğe alır. Veritabanında sözlüğü güncelledikten sonra API'yi yeniden başlatın.
+Migration’lar PostgreSQL'deki `DictionaryWord` tablosunu 5.805 farklı beş harfli kelimeyle doldurur. `Â`, `Î` ve `Û` ekran klavyesinde kullanılabilir. `isAnswer` alanı açık olan 502 kelime maç cevabı olarak seçilebilir. Tablodaki tüm kelimeler tahmin olarak kabul edilir. API, listeyi açılışta belleğe alır. Veritabanında sözlüğü güncelledikten sonra API'yi yeniden başlatın.
 
 Daha önce kurduysanız güncel kodla `docker compose up -d --build --wait` çalıştırarak migration'ı uygulayabilirsiniz. Yerel geliştirmede `npm run migrate` çalıştırın ve API'yi yeniden başlatın. Sözlüğün kaynak ve lisans bilgileri `apps/api/licenses/zemberek` dizinindedir.
 

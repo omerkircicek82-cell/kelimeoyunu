@@ -2,7 +2,7 @@ export const ROUND_COUNT = 5;
 export const ROUND_MS = 90_000;
 export const MAX_ATTEMPTS = 5;
 export const WORD_LENGTH = 5;
-export const TURKISH_ALPHABET = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ";
+export const TURKISH_ALPHABET = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZÂÎÛ";
 
 export function normalizeWord(value: string) {
   return value.trim().normalize("NFC").toLocaleUpperCase("tr-TR");
