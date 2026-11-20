@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: arena
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - arena-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "arena", "-d", "arena"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  migrate:
+    image: kelime-arenasi-api:local
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile
+      target: api
+    command: ["npm", "run", "migrate"]
+    environment:
+      DATABASE_URL: postgresql://arena:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/arena
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: kelime-arenasi-api:local
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile
+      target: api
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      TRUST_PROXY: "1"
+      DATABASE_URL: postgresql://arena:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/arena
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile
+      target: web
+    healthcheck:
+      test: ["CMD", "wget", "-Y", "off", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.28-alpine
+    volumes:
+      - ./infrastructure/nginx/proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PUBLIC_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  arena-db:

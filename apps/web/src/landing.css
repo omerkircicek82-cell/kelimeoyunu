@@ -1,0 +1,373 @@
+.arena-landing {
+  position: relative;
+  isolation: isolate;
+  width: min(1160px, calc(100% - 64px));
+  min-height: min(740px, calc(100svh - 80px));
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.13fr) minmax(345px, 0.87fr);
+  gap: clamp(30px, 5vw, 78px);
+  align-items: center;
+  padding-block: clamp(48px, 8vw, 104px);
+}
+
+.arena-landing__content,
+.arena-landing__example {
+  position: relative;
+}
+
+.arena-landing__capacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--arena-purple, #a38bf4);
+  font-size: 0.79rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 7px 12px;
+  background: color-mix(in srgb, var(--arena-purple, #a38bf4) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--arena-purple, #a38bf4) 27%, transparent);
+  border-radius: 999px;
+}
+
+.arena-landing h1 {
+  display: grid;
+  margin: 22px 0 22px;
+  color: var(--arena-text, #edeaf9);
+  font-size: clamp(4rem, 7.3vw, 7.4rem);
+  font-weight: 900;
+  line-height: 0.87;
+  letter-spacing: -0.075em;
+}
+
+.arena-landing h1 span {
+  color: var(--arena-lime, #bcf885);
+}
+
+.arena-landing__tagline {
+  max-width: 450px;
+  margin: 30px 0 12px;
+  color: var(--arena-text, #edeaf9);
+  font-size: clamp(1.12rem, 2.1vw, 1.4rem);
+  font-weight: 670;
+  letter-spacing: -0.028em;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.arena-landing__description {
+  max-width: 425px;
+  margin: 0;
+  color: var(--arena-muted, #b5adc8);
+  font-size: 1rem;
+  line-height: 1.68;
+  text-wrap: pretty;
+}
+
+.arena-landing__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.arena-landing__button,
+.arena-landing__help,
+.arena-landing-board__replay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.arena-landing__button {
+  min-height: 51px;
+  gap: 9px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 0.83rem;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.arena-landing__button:hover {
+  transform: translateY(-2px);
+}
+
+.arena-landing__button:active {
+  transform: translateY(0);
+}
+
+.arena-landing__button--primary {
+  color: #162111;
+  background: var(--arena-lime, #bcf885);
+  box-shadow: 0 4px 23px #a4ee6c21;
+}
+
+.arena-landing__button--primary:hover {
+  box-shadow: 0 7px 29px #a4ee6c40;
+}
+
+.arena-landing__action-arrow {
+  margin-left: 6px;
+}
+
+.arena-landing__button--secondary {
+  color: var(--arena-text, #edeaf9);
+  background: var(--arena-panel, #151626);
+  border-color: var(--arena-line, #2b2841);
+}
+
+.arena-landing__button--secondary:hover {
+  border-color: var(--arena-purple, #a38bf4);
+}
+
+.arena-landing__help {
+  gap: 8px;
+  min-height: 42px;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--arena-muted, #b5adc8);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.arena-landing__help:hover {
+  color: var(--arena-text, #edeaf9);
+}
+
+.arena-landing__button:focus-visible,
+.arena-landing__help:focus-visible,
+.arena-landing-board__replay:focus-visible {
+  outline: 2px solid var(--arena-purple, #a38bf4);
+  outline-offset: 4px;
+}
+
+.arena-landing__example::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -20% max(-8%, -18px);
+  background:
+    radial-gradient(ellipse at 48% 51%, #7752bd27, transparent 70%),
+    repeating-linear-gradient(0deg, #9479d21c 0 1px, transparent 1px 31px),
+    repeating-linear-gradient(90deg, #9479d21c 0 1px, transparent 1px 31px);
+  mask-image: radial-gradient(ellipse, #000 24%, transparent 74%);
+  pointer-events: none;
+}
+
+.arena-landing-board {
+  max-width: 470px;
+  margin-inline: auto;
+  padding: 20px clamp(14px, 4vw, 30px) 24px;
+  background: linear-gradient(
+    147deg,
+    color-mix(in srgb, var(--arena-purple, #a38bf4) 8%, var(--arena-panel, #151626)),
+    var(--arena-panel, #151626) 60%
+  );
+  border: 1px solid color-mix(in srgb, var(--arena-line, #2b2841) 78%, var(--arena-purple, #a38bf4));
+  border-radius: 24px;
+  box-shadow:
+    0 26px 72px #08071165,
+    inset 0 1px #ffffff0a;
+}
+
+.arena-landing-board__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--arena-line, #2b2841);
+}
+
+.arena-landing-board__header h2 {
+  margin: 0;
+  color: var(--arena-text, #edeaf9);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.arena-landing-board__replay {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--arena-line, #2b2841);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--arena-muted, #b5adc8);
+}
+
+.arena-landing-board__replay:hover {
+  color: var(--arena-text, #edeaf9);
+  border-color: var(--arena-purple, #a38bf4);
+}
+
+.arena-landing-board__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: clamp(5px, 1.1vw, 8px);
+  width: min(100%, 313px);
+  margin: 25px auto 22px;
+  perspective: 600px;
+}
+
+.arena-landing-board__tile {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--arena-line, #2b2841);
+  border-radius: clamp(7px, 1vw, 11px);
+  font-size: clamp(1.24rem, 2.8vw, 1.85rem);
+  font-weight: 780;
+  line-height: 1;
+  color: var(--arena-text, #edeaf9);
+  background: color-mix(in srgb, var(--arena-bg, #0c0d17) 54%, var(--arena-panel, #151626));
+}
+
+.arena-landing-board__tile[class*='tile--'] {
+  background: var(--tile-background);
+  color: var(--tile-foreground);
+  border-color: var(--tile-border);
+  animation: arena-landing-reveal 380ms ease both;
+}
+
+.arena-landing-board__tile--correct {
+  --tile-background: #a9e577;
+  --tile-border: #c2f395;
+  --tile-foreground: #132712;
+}
+
+.arena-landing-board__tile--present {
+  --tile-background: #e9be74;
+  --tile-border: #f5d18d;
+  --tile-foreground: #352510;
+}
+
+.arena-landing-board__tile--absent {
+  --tile-background: #353449;
+  --tile-border: #4c4960;
+  --tile-foreground: #e3ddef;
+}
+
+.arena-landing-board__mark {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  opacity: 0.8;
+}
+
+.arena-landing-board__legend {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px 15px;
+  list-style: none;
+  color: var(--arena-muted, #b5adc8);
+  font-size: 0.72rem;
+  font-weight: 550;
+}
+
+.arena-landing-board__legend li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.arena-landing-board__legend--correct svg {
+  color: var(--arena-lime, #bcf885);
+}
+.arena-landing-board__legend--present svg {
+  color: var(--arena-amber, #efc26d);
+}
+
+@keyframes arena-landing-reveal {
+  0% {
+    background: var(--arena-bg, #0c0d17);
+    color: transparent;
+    border-color: var(--arena-line, #2b2841);
+  }
+
+  45% {
+    transform: rotateX(87deg);
+    background: var(--arena-bg, #0c0d17);
+    color: transparent;
+    border-color: var(--arena-line, #2b2841);
+  }
+
+  55% {
+    transform: rotateX(-72deg);
+  }
+
+  100% {
+    transform: rotateX(0);
+  }
+}
+
+@media (max-width: 790px) {
+  .arena-landing {
+    width: min(540px, calc(100% - 40px));
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 24px;
+    min-height: auto;
+    padding-block: 45px 60px;
+  }
+
+  .arena-landing__content {
+    text-align: center;
+    width: 100%;
+  }
+
+  .arena-landing h1 {
+    font-size: clamp(3.85rem, 12.6vw, 6.75rem);
+  }
+
+  .arena-landing__tagline,
+  .arena-landing__description {
+    margin-inline: auto;
+  }
+
+  .arena-landing__actions {
+    justify-content: center;
+  }
+
+  .arena-landing__example {
+    width: 100%;
+  }
+}
+
+@media (max-width: 370px) {
+  .arena-landing__button {
+    padding-inline: 12px;
+    font-size: 0.73rem;
+  }
+
+  .arena-landing__action-arrow {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena-landing__button,
+  .arena-landing-board__tile[class*='tile--'] {
+    animation: none;
+    transition: none;
+  }
+}
+
+:root[data-theme='light'] .arena-landing__button--primary {
+  color: #fff;
+}

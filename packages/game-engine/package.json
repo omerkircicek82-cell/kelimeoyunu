@@ -1,0 +1,8 @@
+{
+  "name": "@arena/game-engine",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@arena/shared": "*"
+  }
+}

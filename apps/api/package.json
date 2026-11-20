@@ -1,0 +1,21 @@
+{
+  "name": "@arena/api",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/main.ts",
+    "start": "node --env-file-if-exists=../../.env dist/main.mjs"
+  },
+  "dependencies": {
+    "@arena/game-engine": "*",
+    "@arena/shared": "*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@prisma/adapter-pg": "~7.10.1",
+    "@prisma/client": "~7.10.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.0",
+    "socket.io": "^4.8.0",
+    "zod": "^4.6.7"
+  }
+}

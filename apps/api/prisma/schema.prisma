@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Player {
+  id           String              @id
+  name         String
+  createdAt    DateTime            @default(now())
+  sessions     PlayerSession[]
+  hostedRooms  GameRoom[]
+  participants RoomParticipant[]
+  guesses      RoundGuess[]
+  rounds       RoundPlayerResult[]
+  matches      MatchResult[]
+}
+
+model PlayerSession {
+  id        String   @id
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id])
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([playerId])
+  @@index([expiresAt])
+}
+
+model GameRoom {
+  id           String            @id
+  code         String
+  name         String
+  maxPlayers   Int
+  hostId       String
+  host         Player            @relation(fields: [hostId], references: [id])
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  participants RoomParticipant[]
+  matches      GameMatch[]
+
+  @@index([code])
+}
+
+model RoomParticipant {
+  roomId    String
+  playerId  String
+  room      GameRoom @relation(fields: [roomId], references: [id])
+  player    Player   @relation(fields: [playerId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@id([roomId, playerId])
+}
+
+model GameMatch {
+  id        String        @id
+  roomId    String
+  room      GameRoom      @relation(fields: [roomId], references: [id])
+  createdAt DateTime      @default(now())
+  endedAt   DateTime?
+  rounds    GameRound[]
+  results   MatchResult[]
+
+  @@index([roomId])
+}
+
+model GameRound {
+  id        String              @id
+  matchId   String
+  match     GameMatch           @relation(fields: [matchId], references: [id])
+  number    Int
+  answer    String
+  startedAt DateTime
+  endedAt   DateTime
+  guesses   RoundGuess[]
+  results   RoundPlayerResult[]
+
+  @@unique([matchId, number])
+}
+
+model RoundGuess {
+  roundId   String
+  playerId  String
+  round     GameRound @relation(fields: [roundId], references: [id])
+  player    Player    @relation(fields: [playerId], references: [id])
+  attempt   Int
+  word      String
+  marks     Json
+  createdAt DateTime
+
+  @@id([roundId, playerId, attempt])
+}
+
+model RoundPlayerResult {
+  roundId   String
+  playerId  String
+  round     GameRound @relation(fields: [roundId], references: [id])
+  player    Player    @relation(fields: [playerId], references: [id])
+  status    String
+  points    Int
+  attempts  Int
+  solveMs   Int?
+
+  @@id([roundId, playerId])
+}
+
+model MatchResult {
+  matchId   String
+  playerId  String
+  match     GameMatch @relation(fields: [matchId], references: [id])
+  player    Player    @relation(fields: [playerId], references: [id])
+  rank      Int
+  points    Int
+  solved    Int
+  solveMs   Int
+  attempts  Int
+  fastestMs Int?
+  fastestWord String?
+
+  @@id([matchId, playerId])
+}
