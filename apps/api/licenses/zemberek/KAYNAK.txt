@@ -1,0 +1,5 @@
+Zemberek-NLP ana sözlüğü (447c500d90afdc8d681f77b10e9c40f2ff58a3b2), Apache-2.0.
+https://github.com/ahmetaa/zemberek-nlp/blob/447c500d90afdc8d681f77b10e9c40f2ff58a3b2/morphology/src/main/resources/tr/master-dictionary.dict
+
+Değişiklikler: Beş harfli küçük harfli başlıklar seçildi. Ayırt edilebilen özel ad ve kısaltmalar elendi. Kelime Arenası'nın mevcut 1284 tahmini korundu ve Türkçe büyük harfe dönüştürüldü. Yinelenenler elendi. Sonuç 4821 oyun uyumlu kelime. Oyunun alfabesi dışında kalan â, î veya û içeren 199 sözlük maddesi bu sürüme dahil edilmedi.
+Sözlük yöresel, eski veya teknik maddeler de içerebilir.
