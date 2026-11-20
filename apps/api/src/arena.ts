@@ -5,7 +5,6 @@ import {
   type Stats,
 } from '@arena/game-engine';
 import type { Guess, GuessRequest, Phase, PlayerStatus, PlayerView, RoomView } from '@arena/shared';
-import { accepted, answers } from './words';
 
 export type Identity = { code: string; playerId: string };
 export type Settings = { roomName?: string; maxPlayers?: number };
@@ -73,8 +72,8 @@ export type ArenaEvent =
 
 export interface ArenaOptions {
   clock?: Clock;
-  answers?: readonly string[];
-  accepted?: ReadonlySet<string>;
+  answers: readonly string[];
+  accepted: ReadonlySet<string>;
   reconnectMs?: number;
   onUpdate?: (code: string) => void;
   onPersist?: (event: ArenaEvent) => void;
@@ -139,13 +138,13 @@ export class Arena {
   private readonly accepted: ReadonlySet<string>;
   private readonly reconnectMs: number;
 
-  constructor(private readonly options: ArenaOptions = {}) {
+  constructor(private readonly options: ArenaOptions) {
     this.clock = options.clock ?? systemClock;
-    this.answers = [...new Set((options.answers ?? answers).map(normalizeWord))];
+    this.answers = [...new Set(options.answers.map(normalizeWord))];
     if (this.answers.length < ROUNDS || this.answers.some(word => !isTurkishWord(word))) {
       throw new Error('Oyun için en az beş farklı geçerli cevap gerekli.');
     }
-    this.accepted = new Set([...(options.accepted ?? accepted), ...this.answers]);
+    this.accepted = new Set([...options.accepted, ...this.answers]);
     this.reconnectMs = options.reconnectMs ?? RECONNECT_MS;
   }
 

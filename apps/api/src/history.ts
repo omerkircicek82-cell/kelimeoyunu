@@ -12,20 +12,25 @@ type SessionEvent = {
 type HistoryEvent = ArenaEvent | SessionEvent;
 
 export class History {
-  private readonly db: PrismaClient | undefined;
+  private readonly db: PrismaClient;
   private tail = Promise.resolve();
   private failed = false;
 
-  constructor(url: string | undefined) {
-    if (url) {
-      this.db = new PrismaClient({
-        adapter: new PrismaPg({ connectionString: url, connectionTimeoutMillis: 3_000 }),
-      });
-    }
+  constructor(url: string) {
+    this.db = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: url, connectionTimeoutMillis: 3_000 }),
+    });
+  }
+
+  async loadDictionary() {
+    const rows = await this.db.dictionaryWord.findMany({ select: { word: true, isAnswer: true } });
+    return {
+      answers: rows.filter(row => row.isAnswer).map(row => row.word),
+      accepted: new Set(rows.map(row => row.word)),
+    };
   }
 
   async check() {
-    if (!this.db) return "memory" as const;
     await this.db.$queryRaw`SELECT 1 FROM "GameRoom" LIMIT 1`;
     if (this.failed) throw new Error("Maç geçmişi yazılamadı.");
     return "postgresql" as const;
@@ -33,7 +38,6 @@ export class History {
 
   enqueue(event: HistoryEvent) {
     const db = this.db;
-    if (!db) return;
     this.tail = this.tail.then(async () => {
       for (const delay of [0, 250, 1_000]) {
         if (delay) await new Promise(resolve => setTimeout(resolve, delay));
@@ -51,7 +55,7 @@ export class History {
 
   async close() {
     await this.tail;
-    await this.db?.$disconnect();
+    await this.db.$disconnect();
   }
 }
 

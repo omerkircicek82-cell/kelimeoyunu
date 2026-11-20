@@ -75,7 +75,7 @@ function digest(token: string) {
 export function mountGateway(
   http: HttpServer,
   history: Pick<History, "enqueue">,
-  options: Pick<ArenaOptions, "clock" | "answers" | "accepted"> = {},
+  options: Pick<ArenaOptions, "clock" | "answers" | "accepted">,
 ) {
   const io = new Server<ClientEvents, ServerEvents, Record<never, never>, { identity?: Identity }>(http, {
     maxHttpBufferSize: 4_096,

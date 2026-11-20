@@ -122,3 +122,8 @@ model MatchResult {
 
   @@id([matchId, playerId])
 }
+
+model DictionaryWord {
+  word     String  @id
+  isAnswer Boolean @default(false)
+}

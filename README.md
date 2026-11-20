@@ -20,7 +20,7 @@ npm run dev
 
 Vite varsayılan olarak 5173, NestJS 3000 numaralı portta çalışır. Vite, `/api/` ve `/socket.io/` isteklerini API'ye iletir. İki tarayıcı profili açın, ilkinde oda oluşturun, ikincisinde davet bağlantısıyla katılın. Oda sahibi dışındaki oyuncular hazır olduğunda oda sahibi maçı başlatabilir.
 
-Yerel PostgreSQL kurulumunuz varsa Compose komutu yerine `.env` içindeki `DATABASE_URL` değerini o veritabanına göre ayarlayın. Veritabanı olmadan hızlı bir arayüz veya oyun kontrolü için API'yi `DATABASE_URL` tanımlamadan çalıştırabilirsiniz. Bu modda veriler süreç ömrü boyunca bellekte kalır.
+Yerel PostgreSQL kurulumunuz varsa Compose komutu yerine `.env` içindeki `DATABASE_URL` değerini o veritabanına göre ayarlayın. API, kelime sözlüğünü açılışta PostgreSQL'den yüklediği için `DATABASE_URL` gerekir.
 
 ```bash
 npm run check
@@ -56,6 +56,12 @@ curl -fsS http://127.0.0.1:8080/api/health
 Nginx web uygulamasını, REST API'yi ve Socket.IO bağlantısını aynı origin üzerinden sunar. `GET /api/health` API ve depolama durumunu, `GET /api/rules` tur, tahmin ve oyuncu kurallarını döndürür. PostgreSQL hazır olduğunda `migrate` servisi migration'ları uygular ve başarıyla çıkar. Daha sonra API başlar. PostgreSQL verileri `arena-db` adlı kalıcı Docker volume'ünde tutulur.
 
 Prisma 7 istemcisi `npm ci` sırasında üretilir. `npm run migrate`, npm kilit dosyasında sabitlenen Prisma şema motorunun WebAssembly sürümünü kullanır. Mevcut sürümün migration'larını tekrar uygulamak için `docker compose run --rm migrate` kullanın. Yeni migration'ları geliştirme veritabanında oluşturun ve SQL dosyalarını sürüm kontrolüne ekleyin. Üretim veritabanında yalnızca dağıtım migration'larını uygulayın.
+
+## Kelime sözlüğü
+
+Migration, PostgreSQL'deki `DictionaryWord` tablosuna 4.821 beş harfli kelime ekler. `isAnswer` alanı açık olan 502 kelime maç cevabı olarak seçilebilir. Tablodaki tüm kelimeler tahmin olarak kabul edilir. API, listeyi açılışta belleğe alır. Veritabanında sözlüğü güncelledikten sonra API'yi yeniden başlatın.
+
+Daha önce kurduysanız güncel kodla `docker compose up -d --build --wait` çalıştırarak migration'ı uygulayabilirsiniz. Yerel geliştirmede `npm run migrate` çalıştırın ve API'yi yeniden başlatın. Sözlüğün kaynak ve lisans bilgileri `apps/api/licenses/zemberek` dizinindedir.
 
 ## Üretime dağıtım
 

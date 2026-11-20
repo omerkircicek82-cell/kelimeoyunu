@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { COUNTDOWN_MS, INTERMISSION_MS, ROUND_MS } from '@arena/game-engine';
 import { Arena, ArenaError, type ArenaEvent, type Clock, type Identity } from './arena';
-import { accepted, answers } from './words';
 
 class ManualClock implements Clock {
   private time = 1_700_000_000_000;
@@ -67,12 +66,10 @@ function expectError(operation: () => unknown, code: string) {
   assert.throws(operation, (error: unknown) => error instanceof ArenaError && error.code === code);
 }
 
-test('answer pool contains distinct allowed words and excludes invented combinations', () => {
-  assert.ok(answers.length >= 5);
-  assert.equal(new Set(answers).size, answers.length);
-  assert.ok(answers.every(word => accepted.has(word)));
-  assert.ok(accepted.has('KATAR'));
-  assert.equal(accepted.has('ZZZZZ'), false);
+test('a dictionary needs at least five distinct valid answer words', () => {
+  const accepted = new Set(testAnswers);
+  assert.throws(() => new Arena({ answers: [...testAnswers.slice(0, 4), testAnswers[0]], accepted }));
+  assert.throws(() => new Arena({ answers: [...testAnswers.slice(0, 4), 'ABC'], accepted }));
 });
 
 test('room creation, permissions, capacity, settings and host departure', () => {
