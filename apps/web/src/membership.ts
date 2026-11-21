@@ -4,13 +4,13 @@ import type { AccountProfile, AuthReply, LeaderboardEntry } from '@arena/shared'
 type Credentials = { username: string; password: string };
 const ACCOUNT_KEY = 'kelime-arenasi:account';
 
-class AccountRequestError extends Error {
+export class AccountRequestError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
   }
 }
 
-async function api<T>(path: string, { token, body }: { token?: string; body?: object } = {}): Promise<T> {
+export async function accountApi<T>(path: string, { token, body }: { token?: string; body?: object } = {}): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
   try {
@@ -78,7 +78,7 @@ export function useMembership() {
     if (!value) return;
     const version = ++requestVersion.current;
     try {
-      const { profile } = await api<{ profile: AccountProfile }>('auth/me', { token: value.token });
+      const { profile } = await accountApi<{ profile: AccountProfile }>('auth/me', { token: value.token });
       if (version === requestVersion.current && current.current?.token === value.token) update({ ...value, profile });
     } catch (error) {
       if (error instanceof AccountRequestError && error.status === 401 && current.current?.token === value.token) {
@@ -88,20 +88,20 @@ export function useMembership() {
   }, [invalidate, update]);
 
   const authenticate = useCallback(async (kind: 'login' | 'register', credentials: Credentials) => {
-    const reply = await api<AuthReply>(`auth/${kind}`, { body: credentials });
+    const reply = await accountApi<AuthReply>(`auth/${kind}`, { body: credentials });
     update(reply);
   }, [update]);
 
   const logout = useCallback(async () => {
     const value = current.current;
     if (!value) return;
-    await api('auth/logout', { token: value.token, body: {} });
+    await accountApi('auth/logout', { token: value.token, body: {} });
     if (current.current?.token === value.token) invalidate();
   }, [invalidate]);
 
   const loadEntries = useCallback(async () => {
     await refresh();
-    return (await api<{ entries: LeaderboardEntry[] }>('leaderboard', { token: current.current?.token })).entries;
+    return (await accountApi<{ entries: LeaderboardEntry[] }>('leaderboard', { token: current.current?.token })).entries;
   }, [refresh]);
 
   return { session, refresh, invalidate, authenticate, logout, loadEntries };

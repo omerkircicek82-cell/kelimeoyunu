@@ -1,15 +1,19 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, DoorOpen, Link2, Lock, WifiOff } from 'lucide-react';
+import { ArrowRight, DoorOpen, Infinity, Link2, Lock, Timer, WifiOff } from 'lucide-react';
+import { ROUND_MS, type RoundMode, type SoloChallengeTicket } from '@arena/shared';
 import { attachConnection, forgetTicket, hasRoomTicket, request, useArena } from './connection';
 import { Countdown, GameRound, MatchResults, RoundResults } from './Game';
 import { Landing } from './Landing';
 import { Lobby, RoomHeading } from './Lobby';
 import { useMembership } from './membership';
+import { OfflineGame } from './OfflineGame';
+import { useOfflineQueue } from './offlineQueue';
 import { RoomForm, type EntryMode } from './RoomForm';
 import { Header, Help, loadPreferences, Modal, type Preferences } from './ui';
 
 type Overlay = EntryMode | 'help' | 'profile' | 'leave';
+type SoloRun = { key: number; mode: RoundMode; challenge?: SoloChallengeTicket; accountId?: string };
 const AccountPanel = lazy(() => import('./Member').then(module => ({ default: module.AccountPanel })));
 const LeaderboardPage = lazy(() => import('./Member').then(module => ({ default: module.LeaderboardPage })));
 
@@ -17,6 +21,9 @@ export function App() {
   const { room, connected, recovering, notice } = useArena();
   const { session, refresh, invalidate, authenticate, logout, loadEntries } = useMembership();
   const profile = session?.profile ?? null;
+  const offline = useOfflineQueue(session, refresh);
+  const [soloRun, setSoloRun] = useState<SoloRun | null>(null);
+  const soloRunKey = useRef(0);
   const [accountPending, setAccountPending] = useState(false);
   const accountAction = useRef(false);
   const [preferences, setPreferences] = useState(loadPreferences);
@@ -68,12 +75,21 @@ export function App() {
     else navigate('/');
   }
 
-  function open(mode: EntryMode | 'help') {
+  function open(mode: EntryMode | 'help' | 'offline') {
+    if (mode === 'offline') {
+      setSoloRun(null);
+      navigate('/cevrimdisi');
+      return;
+    }
     if (room && mode !== 'help') {
       navigate(`/room/${room.code}`);
       return;
     }
     setOverlay(mode);
+  }
+
+  function startSolo(mode: RoundMode) {
+    setSoloRun({ key: ++soloRunKey.current, mode, challenge: offline.getTicket(), accountId: profile?.id });
   }
 
   async function leave() {
@@ -140,6 +156,53 @@ export function App() {
               )}
               <Landing open={open} />
             </>
+          }
+        />
+        <Route
+          path="/cevrimdisi"
+          element={
+            soloRun ? (
+              <OfflineGame
+                key={soloRun.key}
+                mode={soloRun.mode}
+                challenge={soloRun.challenge}
+                preferences={preferences}
+                onComplete={result => { if (soloRun.accountId) offline.record(result, soloRun.accountId); }}
+                onBack={() => setSoloRun(null)}
+                onPlayAgain={() => startSolo(soloRun.mode)}
+              />
+            ) : (
+              <main className="site-width room-page">
+                <section className="panel standalone solo-mode-picker">
+                  <span className="result-icon"><WifiOff size={22} aria-hidden="true" /></span>
+                  <h1>Çevrimdışı oyna</h1>
+                  <p>Tek kelime, beş tahmin hakkı.</p>
+                  <div className="solo-mode-actions">
+                    <button className="button button-primary" onClick={() => startSolo('timed')}>
+                      <Timer size={18} /> Süreli · {ROUND_MS / 1000} saniye
+                    </button>
+                    <button className="button button-secondary" onClick={() => startSolo('untimed')}>
+                      <Infinity size={18} /> Süresiz
+                    </button>
+                  </div>
+                  <p className="solo-mode-status">
+                    {offline.available
+                      ? 'Puanlı oyun hazır. Sonucun bağlantı geldiğinde hesabına işlenecek.'
+                      : profile
+                        ? 'Puanlı bilet gelene kadar antrenman oynayabilirsin.'
+                        : 'Misafir antrenmanı. Genel puan için hesabına giriş yap.'}
+                  </p>
+                  {profile && offline.pending > 0 && <p role="status">{offline.pending} sonuç eşitlenmeyi bekliyor.</p>}
+                  {profile && offline.notice && <p role="alert" className="form-error">{offline.notice}</p>}
+                  <div className="button-group">
+                    {profile
+                      ? <button className="button button-quiet" onClick={() => void offline.sync()}>Eşitle</button>
+                      : <button className="button button-quiet" onClick={openAccount}>Giriş / Kayıt</button>}
+                    <button className="button button-quiet" onClick={() => navigate('/')}>Ana menüye dön</button>
+                  </div>
+                </section>
+              </main>
+            )
           }
         />
         <Route

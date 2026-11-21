@@ -23,7 +23,7 @@ import {
   type SoloResultRequest,
 } from '@arena/shared';
 import { evaluateGuess } from '@arena/game-engine';
-import { offlineAccepted, offlineAnswers } from './offlineWords';
+import { offlineAccepted, offlineAnswers } from '@arena/game-engine/offline-words';
 import { baseStyles as base, colors } from './Theme';
 
 const keyRows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ', 'ÂÎÛ'];

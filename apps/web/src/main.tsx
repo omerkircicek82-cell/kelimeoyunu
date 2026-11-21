@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { MotionConfig } from 'motion/react';
@@ -11,3 +13,11 @@ createRoot(document.getElementById('root')!).render(
     </MotionConfig>
   </BrowserRouter>,
 );
+
+if (import.meta.env.PROD && window.isSecureContext && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Games remain available without a fetch while the application is open.
+    });
+  });
+}

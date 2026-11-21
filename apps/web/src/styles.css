@@ -1408,3 +1408,16 @@ h2 {
     margin: 3px 0 0;
   }
 }
+
+.solo-mode-picker {
+  max-width: 620px;
+}
+.solo-mode-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-block: 16px;
+}
+.solo-mode-status {
+  color: var(--arena-muted);
+}

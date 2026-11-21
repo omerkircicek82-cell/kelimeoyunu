@@ -1,0 +1,103 @@
+.offline-game {
+  width: min(560px, calc(100% - 24px));
+  display: grid;
+  gap: 11px;
+  padding-block: 19px 30px;
+}
+
+.offline-game-heading,
+.offline-game-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.offline-game-heading h1 {
+  font-size: clamp(21px, 4.8vw, 34px);
+  font-weight: 850;
+  line-height: 1.15;
+  letter-spacing: -0.045em;
+}
+
+.offline-game-heading .button {
+  flex: none;
+  padding-inline: 5px;
+}
+
+.offline-accent-keys .game-key {
+  flex: 0 1 40px;
+}
+
+.offline-result {
+  display: grid;
+  justify-items: start;
+  gap: 9px;
+  padding: 16px;
+}
+
+.offline-result h2,
+.offline-best,
+.offline-best > span,
+.offline-rating {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.offline-result h2 svg {
+  color: var(--arena-lime);
+}
+
+.offline-result h2:focus {
+  outline: none;
+}
+
+.offline-answer,
+.offline-best,
+.offline-guest {
+  color: var(--arena-muted);
+  font-size: 14px;
+}
+
+.offline-answer strong {
+  margin-left: 5px;
+  color: var(--arena-text);
+  letter-spacing: 0.1em;
+}
+
+.offline-best {
+  flex-wrap: wrap;
+}
+
+.offline-rating {
+  padding: 9px 11px;
+  border: 1px solid var(--arena-line);
+  border-radius: 9px;
+  background: var(--field);
+}
+
+.offline-rating p {
+  font-weight: 750;
+}
+
+.offline-rating small {
+  color: var(--arena-muted);
+}
+
+.offline-rating > strong {
+  color: var(--arena-lime);
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.offline-rating > .negative {
+  color: var(--error);
+}
+
+@media (max-width: 380px) {
+  .offline-game-heading .button {
+    min-height: 37px;
+    font-size: 12px;
+  }
+}

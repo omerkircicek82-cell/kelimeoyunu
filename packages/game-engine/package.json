@@ -1,7 +1,10 @@
 {
   "name": "@arena/game-engine",
   "type": "module",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./offline-words": "./src/offlineWords.ts"
+  },
   "dependencies": {
     "@arena/shared": "*"
   }

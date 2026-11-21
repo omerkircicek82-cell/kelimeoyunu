@@ -14,6 +14,8 @@ Android ana ekranından Online, Çevrimdışı veya Lider Tablosu açılabilir. 
 
 Web’de üst menüdeki **Giriş / Kayıt** düğmesiyle hesap oluşturabilir veya mevcut Android hesabınıza girebilirsiniz. Web’de hesapla tamamladığınız online turlar aynı genel puana işlenir. **Lider tablosu** üst menüden açılır.
 
+Web ana sayfasındaki **Çevrimdışı oyna** düğmesi, süreli veya süresiz tek kişilik oyunu açar. Önceden bağlantı kurup hesapla bilet aldıysanız tarayıcı sonuçları yerelde bekletir ve bağlantı geri gelince aynı genel puana işler. Yerel ağın HTTP adresinde oyun açık sekmede çalışır. HTTPS veya `localhost` üzerinden ilk yükleme tamamlandıktan sonra tarayıcı oyunu bağlantısız olarak yeniden açabilir.
+
 Kelime çözülürse 24 puan eklenir, çözülmezse 24 puan düşer. En iyi tahmin satırındaki her yeşil harf 3, sarı harf 1 puan ekler. Genel puan sıfırın altına inmez. Kayıtlı Android cihazları oyun sunucusundan en fazla sekiz açık çevrimdışı bilet alır. Tamamlanan biletli oyunlar bağlantı geri gelince bir kez eşitlenir. Biletler yedi gün boyunca geçerlidir. Çevrimdışı istemci cevabı yerel olarak tuttuğu için bu sonuçlar, online maçlarla aynı düzeyde hileye dayanıklı değildir.
 
 ## Gereksinimler

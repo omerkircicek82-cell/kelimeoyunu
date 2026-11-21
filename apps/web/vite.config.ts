@@ -6,6 +6,9 @@ const api = process.env.ARENA_VITE_API ?? 'http://localhost:3000';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: { output: { manualChunks: { react: ['react', 'react-dom', 'react-router-dom'] } } },
+  },
   server: {
     proxy: {
       '/api': api,

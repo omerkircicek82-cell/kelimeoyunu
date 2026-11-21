@@ -129,6 +129,16 @@
   border-color: var(--arena-purple, #a38bf4);
 }
 
+.arena-landing__button--offline {
+  color: var(--arena-text, #edeaf9);
+  background: color-mix(in srgb, var(--arena-purple, #a38bf4) 12%, var(--arena-panel, #151626));
+  border-color: color-mix(in srgb, var(--arena-purple, #a38bf4) 45%, var(--arena-line, #2b2841));
+}
+
+.arena-landing__button--offline:hover {
+  border-color: var(--arena-purple, #a38bf4);
+}
+
 .arena-landing__help {
   gap: 8px;
   min-height: 42px;
@@ -365,6 +375,10 @@
   .arena-landing-board__tile[class*='tile--'] {
     animation: none;
     transition: none;
+  }
+
+  .arena-landing__button:hover {
+    transform: none;
   }
 }
 
