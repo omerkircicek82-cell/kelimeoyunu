@@ -1,0 +1,28 @@
+{
+  "cli": {
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "environment": "preview",
+      "env": {
+        "ARENA_LAN_PREVIEW": "1"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "environment": "production",
+      "autoIncrement": true,
+      "env": {
+        "ARENA_RELEASE": "1"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  }
+}

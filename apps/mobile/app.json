@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Kelime Arenası",
+    "slug": "kelime-arenasi",
+    "version": "1.0.0",
+    "platforms": ["android"],
+    "scheme": "kelimearenasi",
+    "orientation": "portrait",
+    "backgroundColor": "#101021",
+    "icon": "./assets/icon.png",
+    "android": {
+      "package": "com.kelimearenasi.oyun",
+      "versionCode": 1,
+      "allowBackup": false,
+      "adaptiveIcon": {
+        "backgroundColor": "#101021",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 192,
+          "backgroundColor": "#101021"
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

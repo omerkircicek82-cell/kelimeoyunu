@@ -2,6 +2,10 @@
 
 Arkadaşların davet koduyla aynı odaya katıldığı, gerçek zamanlı bir Türkçe kelime oyunu. Özel odalar 2–8 oyuncuyu destekler. Bir maçta oyuncular beş farklı kelimeyi, her turda 90 saniye ve beş tahmin hakkıyla çözmeye çalışır.
 
+## Android
+
+Mobil uygulama `apps/mobile` dizinindedir. Telefonda yerel ağ testi, Android APK önizlemesi ve Google Play için imzalı AAB oluşturma adımları [Android kılavuzunda](docs/android.md) yer alır.
+
 ## Gereksinimler
 
 - Yerel geliştirme için Node.js 22.12+ (22.x) veya 24.x ve npm
