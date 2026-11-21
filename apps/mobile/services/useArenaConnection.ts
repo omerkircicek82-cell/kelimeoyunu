@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import { io, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import type { ClientEvents, Requests, ResponseFor, RoomTicket, RoomView, ServerEvents } from "@arena/shared";
+
+import { createArenaSocket } from "./server";
 
 type Ticket = { serverUrl: string; code: string; token: string };
 type Success<Event extends keyof Requests> = Extract<ResponseFor<Event>, { ok: true }>;
@@ -50,11 +52,7 @@ async function request<Event extends keyof Requests>(
 }
 
 export function useArenaConnection(serverUrl: string) {
-  const socket: ArenaSocket = useMemo(() => io(serverUrl, {
-    autoConnect: false,
-    transports: ["websocket"],
-    timeout: 8_000,
-  }), [serverUrl]);
+  const socket = useMemo(() => createArenaSocket(serverUrl), [serverUrl]);
   const [state, setState] = useState<ConnectionState>({
     room: null, online: false, recovering: false, error: null,
   });
@@ -111,9 +109,13 @@ export function useArenaConnection(serverUrl: string) {
       setState(value => ({ ...value, online: false, recovering: Boolean(ticket.current) }));
     }
 
-    function connectFailed() {
+    function connectFailed(error: Error & { description?: unknown }) {
+      if (__DEV__) {
+        const status = typeof error.description === "number" ? ` (HTTP ${error.description})` : "";
+        console.info(`[Kelime Arenası] Socket.IO bağlantısı: ${serverUrl} — ${error.message}${status}`);
+      }
       setState(value => ({ ...value, online: false, recovering: Boolean(ticket.current),
-        error: "Sunucuya ulaşılamadı. Bağlantı yeniden deneniyor." }));
+        error: "Oyun bağlantısı kurulamadı. Yeniden deneniyor." }));
     }
 
     function update(room: RoomView) {

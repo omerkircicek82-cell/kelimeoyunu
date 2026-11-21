@@ -1,3 +1,16 @@
+import { io, type Socket } from "socket.io-client";
+import type { ClientEvents, ServerEvents } from "@arena/shared";
+
+export function createArenaSocket(serverUrl: string): Socket<ServerEvents, ClientEvents> {
+  return io(serverUrl, {
+    autoConnect: false,
+    // Keep the polling connection when an emulator or proxy cannot upgrade to WebSocket.
+    transports: ["polling", "websocket"],
+    tryAllTransports: true,
+    timeout: 8_000,
+  });
+}
+
 export function parseServerUrl(value: string) {
   const address = value.trim();
   if (!/^https?:\/\/(?:[a-z0-9.-]+|\[[a-f0-9:]+\])(?::[0-9]{1,5})?\/?$/i.test(address)) {

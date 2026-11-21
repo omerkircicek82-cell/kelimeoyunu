@@ -18,6 +18,17 @@ npm.cmd start
 
 Expo Go ile terminaldeki QR kodu okutun. Başka bir LAN adresine geçerseniz hem Expo başlangıç ayarı hem uygulamadaki sunucu adresi güncellenebilir. QR kodu açılmıyorsa telefonun bilgisayardaki Expo portuna, oyun bağlantısı için de Docker’ın 8080 portuna erişebildiğinden emin olun.
 
+### Android Studio emülatörü
+
+Android Studio emülatörü Windows'taki oyun sunucusuna `http://10.0.2.2:8080` üzerinden erişir. Emülatörün Chrome tarayıcısında `http://10.0.2.2:8080/api/health` yanıtını kontrol edin. Expo Go yüklü emülatör açıkken `apps/mobile` dizininde çalıştırın.
+
+```powershell
+$env:EXPO_PUBLIC_ARENA_URL = "http://10.0.2.2:8080"
+npm.cmd start -- --android --localhost --clear --port 8082
+```
+
+Sağlık adresi cevap veriyor ve uygulamada bağlantı kurulamadı mesajı görünüyorsa, emülatör Chrome'da `http://10.0.2.2:8080/socket.io/?EIO=4&transport=polling` adresini açın. Başarılı yanıt `0{"sid":...` ile başlar. Expo terminalindeki `[Kelime Arenası] Socket.IO bağlantısı` satırı mobil bağlantı hatasının ayrıntısını gösterir.
+
 ## Android paketleri
 
 | Profil | Dosya | Kullanım |
