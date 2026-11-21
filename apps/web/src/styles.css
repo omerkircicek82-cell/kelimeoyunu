@@ -997,8 +997,29 @@ h2 {
   color: var(--arena-lime);
   font-weight: 800;
 }
-.result-points span {
+.result-points > span {
   display: inline-block;
+}
+.round-closeness-note {
+  margin: 0 0 12px;
+  color: var(--arena-muted);
+  font-size: 13px;
+}
+.result-closeness,
+.result-closeness > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.result-closeness {
+  gap: 7px;
+  margin-top: 3px;
+  color: var(--arena-muted);
+  font-size: 11px;
+}
+.result-closeness .mark-icon {
+  width: 15px;
+  height: 15px;
 }
 .round-next {
   display: flex;

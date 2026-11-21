@@ -10,6 +10,12 @@ export const colors = {
   lime: '#bdf66c',
   violet: '#ab9cff',
   violetSoft: '#282348',
+  heroPanel: '#1d1930',
+  heroLine: '#41365a',
+  heroTile: '#29362d',
+  heroTileLine: '#536b43',
+  limeInset: '#a8dc61',
+  limeDetail: '#334124',
   amber: '#edbd66',
   danger: '#ff9b9d',
   correct: '#2a5a3c',
@@ -37,4 +43,5 @@ export const baseStyles = StyleSheet.create({
     padding: 16,
   },
   section: { gap: 14 },
+  sectionTitle: { gap: 5, marginBottom: 2 },
 });

@@ -4,7 +4,7 @@ import {
   calculatePoints, evaluateGuess, isTurkishWord, normalizeWord, rankPlayers,
   type Stats,
 } from '@arena/game-engine';
-import type { Guess, GuessRequest, Phase, PlayerStatus, PlayerView, RoomView } from '@arena/shared';
+import { scoreCloseness, type ClosenessScore, type Guess, type GuessRequest, type Phase, type PlayerStatus, type PlayerView, type RoomView } from '@arena/shared';
 
 export type Identity = { code: string; playerId: string };
 export type Settings = { roomName?: string; maxPlayers?: number };
@@ -85,6 +85,7 @@ interface PlayerRound {
   status: RoundStatus;
   points: number;
   solveMs: number | null;
+  closeness?: ClosenessScore;
 }
 
 interface Player extends Stats {
@@ -334,6 +335,7 @@ export class Arena {
           ? participant.round.status
           : 'disconnected',
         roundPoints: participant.round.points,
+        roundCloseness: participant.round.closeness,
         roundAttempts: participant.round.guesses.length,
         roundSolveMs: participant.round.solveMs,
       };
@@ -489,6 +491,7 @@ export class Arena {
   private endRound(room: Room): void {
     const match = room.match!;
     const endedAt = Math.min(this.clock.now(), room.deadline!);
+    this.awardClosenessPoints(room);
     const guesses: StoredGuess[] = [];
     const results: RoundResult[] = [];
     for (const player of room.players.values()) {
@@ -509,6 +512,26 @@ export class Arena {
       if (match.round < ROUNDS) this.beginRound(room);
       else this.finishMatch(room);
     });
+  }
+
+  private awardClosenessPoints(room: Room): void {
+    const players = [...room.players.values()];
+    if (players.some(player => player.round.status === 'solved')) return;
+
+    const candidates = players.filter(player => !player.left).map(player => {
+      const scores = player.round.guesses.map(guess => scoreCloseness(guess.marks));
+      const best = scores.sort((first, second) => second.points - first.points)[0];
+      return { player, best };
+    });
+    const highest = Math.max(0, ...candidates.map(({ best }) => best?.points ?? 0));
+    if (highest === 0) return;
+
+    for (const { player, best } of candidates) {
+      if (best?.points !== highest) continue;
+      player.round.closeness = best;
+      player.round.points = best.points;
+      player.points += best.points;
+    }
   }
 
   private finishMatch(room: Room): void {

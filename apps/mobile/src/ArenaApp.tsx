@@ -8,12 +8,16 @@ import {
   ScrollView,
   Share,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as SecureStore from 'expo-secure-store';
 import {
+  CLOSENESS_CORRECT_POINTS,
+  CLOSENESS_PRESENT_POINTS,
   MAX_ATTEMPTS,
   ROUND_COUNT,
   ROUND_MS,
@@ -40,7 +44,14 @@ export interface ArenaAppProps {
   openServerSettings?: () => void;
 }
 
-type Scene = 'home' | 'create' | 'join' | 'help';
+type Tab = 'home' | 'help' | 'settings';
+type Scene = Tab | 'create' | 'join' | 'scoring';
+const marksPreferenceKey = 'arena.show-mark-symbols';
+const tabs: ReadonlyArray<{ id: Tab; label: string; icon: string }> = [
+  { id: 'home', label: 'Arena', icon: '▦' },
+  { id: 'help', label: 'Rehber', icon: '?' },
+  { id: 'settings', label: 'Ayarlar', icon: '⚙' },
+];
 type Variant = 'primary' | 'secondary' | 'plain' | 'danger';
 
 const sample: ReadonlyArray<{ word: string; marks: readonly Mark[] }> = [
@@ -50,8 +61,8 @@ const sample: ReadonlyArray<{ word: string; marks: readonly Mark[] }> = [
 ];
 
 const markLabels: Record<Mark, string> = {
-  correct: 'Doğru yer',
-  present: 'Yanlış yer',
+  correct: 'Harf doğru yerde',
+  present: 'Harf kelimede var, yeri farklı',
   absent: 'Kelimede yok',
 };
 
@@ -115,14 +126,22 @@ function Home({ open, enabled }: { open: (scene: Scene) => void; enabled: boolea
   return (
     <View style={styles.home}>
       <View style={styles.hero}>
-        <View style={styles.heroRule} />
+        <View
+          pointerEvents="none"
+          style={styles.heroBackdrop}
+          importantForAccessibility="no-hide-descendants"
+        >
+          <View style={styles.heroTileTop} />
+          <View style={styles.heroTileBottom} />
+        </View>
+        <Text style={styles.heroKicker}>Çok oyunculu kelime oyunu</Text>
         <Text accessibilityRole="header" style={styles.heroFirst}>
           KELİME
         </Text>
         <Text accessibilityRole="header" style={[styles.heroFirst, styles.heroSecond]}>
           ARENASI
         </Text>
-        <Text style={styles.heroCopy}>Aynı kelime. Kimin daha hızlı olduğunu görelim.</Text>
+        <Text style={styles.heroCopy}>Arkadaşlarınla aynı kelimeyi çöz, arenada zirveye çık.</Text>
         <View style={styles.heroStats}>
           <View style={styles.heroStat}>
             <Text style={styles.statValue}>2–8</Text>
@@ -139,11 +158,19 @@ function Home({ open, enabled }: { open: (scene: Scene) => void; enabled: boolea
         </View>
       </View>
       <View style={styles.actions}>
-        <Action title="Oda oluştur" onPress={() => open('create')} disabled={!enabled} />
-        <Action
+        <PlayAction
+          title="Oda oluştur"
+          description="Yeni bir maç için arkadaşlarını davet et."
+          icon="+"
+          onPress={() => open('create')}
+          disabled={!enabled}
+          primary
+        />
+        <PlayAction
           title="Odaya katıl"
+          description="Altı karakterli davet kodunu gir."
+          icon="↗"
           onPress={() => open('join')}
-          variant="secondary"
           disabled={!enabled}
         />
       </View>
@@ -177,18 +204,110 @@ function Home({ open, enabled }: { open: (scene: Scene) => void; enabled: boolea
   );
 }
 
-function Help({ close }: { close: () => void }) {
+function PlayAction({
+  title,
+  description,
+  icon,
+  onPress,
+  disabled,
+  primary = false,
+}: {
+  title: string;
+  description: string;
+  icon: string;
+  onPress: () => void;
+  disabled: boolean;
+  primary?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityHint={description}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.playAction,
+        primary && styles.playActionPrimary,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
+    >
+      <View style={[styles.playIcon, primary && styles.playIconPrimary]}>
+        <Text style={[styles.playIconText, primary && styles.playTextPrimary]}>{icon}</Text>
+      </View>
+      <View style={styles.fill}>
+        <Text style={[base.subtitle, primary && styles.playTextPrimary]}>{title}</Text>
+        <Text style={[base.caption, primary && styles.playCaptionPrimary]}>{description}</Text>
+      </View>
+      <Text style={[styles.playArrow, primary && styles.playTextPrimary]}>›</Text>
+    </Pressable>
+  );
+}
+
+function Navigation({
+  selected,
+  navigate,
+  disabled,
+}: {
+  selected: Tab;
+  navigate: (scene: Tab) => void;
+  disabled: boolean;
+}) {
+  return (
+    <View style={styles.tabBar} accessibilityRole="tablist">
+      <View style={styles.tabList}>
+        {tabs.map(({ id, label, icon }) => {
+          const active = id === selected;
+          return (
+            <Pressable
+              key={id}
+              accessibilityRole="tab"
+              accessibilityLabel={label}
+              accessibilityState={{ selected: active, disabled }}
+              disabled={disabled}
+              onPress={() => navigate(id)}
+              style={({ pressed }) => [styles.tabButton, pressed && styles.pressed]}
+            >
+              <View
+                style={[styles.tabIcon, active && styles.tabIconActive]}
+                importantForAccessibility="no-hide-descendants"
+              >
+                <Text style={[styles.tabGlyph, active && styles.tabGlyphActive]}>{icon}</Text>
+              </View>
+              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function Help({ openScoring }: { openScoring: () => void }) {
   return (
     <View style={base.section}>
-      <Text accessibilityRole="header" style={base.title}>
-        Nasıl oynanır?
-      </Text>
-      <Text style={base.body}>
-        Arkadaşlarınla aynı gizli kelimeyi tahmin et. {ROUND_COUNT} turun sonunda en çok puanı alan
-        kazanır.
-      </Text>
+      <View style={base.sectionTitle}>
+        <Text accessibilityRole="header" style={base.title}>
+          Nasıl oynanır?
+        </Text>
+        <Text style={base.body}>
+          Aynı gizli kelimeyi tahmin et ve {ROUND_COUNT} turun sonunda en yüksek puana ulaş.
+        </Text>
+      </View>
       <View style={[base.card, base.section]}>
-        <Text style={base.subtitle}>Harfleri takip et</Text>
+        <Text style={base.subtitle}>Bir tur nasıl işliyor?</Text>
+        <Text style={base.body}>
+          Beş harfli bir Türkçe kelime yaz. Her turda {MAX_ATTEMPTS} tahmin hakkın ve{' '}
+          {ROUND_MS / 1000} saniyen var.
+        </Text>
+        <Text style={base.body}>
+          Bir tahminden sonra harflerin aldığı renkleri sonraki tahmininde ipucu olarak kullan.
+        </Text>
+      </View>
+      <View style={[base.card, base.section]}>
+        <Text style={base.subtitle}>Harf işaretleri</Text>
         {(Object.keys(markLabels) as Mark[]).map((mark) => (
           <View key={mark} style={styles.helpRow}>
             <View style={[styles.helpMarker, exampleMarks[mark]]}>
@@ -197,12 +316,111 @@ function Help({ close }: { close: () => void }) {
             <Text style={base.label}>{markLabels[mark]}</Text>
           </View>
         ))}
+      </View>
+      <Action title="Puanlama kuralları" onPress={openScoring} variant="secondary" />
+    </View>
+  );
+}
+
+function Scoring() {
+  return (
+    <View style={base.section}>
+      <View style={base.sectionTitle}>
+        <Text accessibilityRole="header" style={base.title}>
+          Puanlama
+        </Text>
+        <Text style={base.body}>Turda kazandığın puan maç toplamına eklenir.</Text>
+      </View>
+      <View style={[base.card, base.section]}>
+        <Text style={base.subtitle}>Kelimeyi bulduğunda</Text>
         <Text style={base.body}>
-          Her turda {MAX_ATTEMPTS} tahmin hakkın ve {ROUND_MS / 1000} saniyen var. Kelimeyi erken ve
-          az tahminle bulduğunda daha fazla puan alırsın.
+          Doğru tahmin 500 puan kazandırır. Kalan süreye ve kullanılmayan tahmin haklarına göre
+          bonus eklenir.
         </Text>
       </View>
-      <Action title="Ana menü" onPress={close} variant="secondary" />
+      <View style={[base.card, base.section]}>
+        <Text style={base.subtitle}>Kelimeyi kimse bulamazsa</Text>
+        <Text style={base.body}>
+          Her oyuncunun tek bir en iyi geçerli tahmini değerlendirilir. En yüksek eşleşme puanına
+          ulaşan oyuncuların her biri bu puanı alır.
+        </Text>
+        <View style={styles.scoreValues}>
+          <View style={[styles.scoreChip, styles.hasLetter]}>
+            <Text style={base.label}>✓ +{CLOSENESS_CORRECT_POINTS}</Text>
+            <Text style={styles.scoreText}>Doğru yer</Text>
+          </View>
+          <View style={[styles.scoreChip, styles.otherPosition]}>
+            <Text style={base.label}>↗ +{CLOSENESS_PRESENT_POINTS}</Text>
+            <Text style={styles.scoreText}>Yanlış yer</Text>
+          </View>
+        </View>
+        <Text style={base.caption}>
+          Örneğin iki yeşil ve bir sarı işaret{' '}
+          {2 * CLOSENESS_CORRECT_POINTS + CLOSENESS_PRESENT_POINTS} puan eder.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function Settings({
+  showMarkSymbols,
+  saveMarkSymbols,
+  serverUrl,
+  online,
+  recovering,
+  openServerSettings,
+}: {
+  showMarkSymbols: boolean;
+  saveMarkSymbols: (enabled: boolean) => void;
+  serverUrl: string;
+  online: boolean;
+  recovering: boolean;
+  openServerSettings?: () => void;
+}) {
+  return (
+    <View style={base.section}>
+      <Text accessibilityRole="header" style={base.title}>
+        Ayarlar
+      </Text>
+      <View style={[base.card, base.section]}>
+        <Text style={base.subtitle}>Görünüm</Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingText}>
+            <Text style={base.label}>Harf işaretleri</Text>
+            <Text style={base.caption}>
+              Tahmin kutularında renklerin yanında ✓, ↗ ve − işaretlerini göster.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Harf işaretleri"
+            value={showMarkSymbols}
+            onValueChange={saveMarkSymbols}
+            trackColor={{ false: colors.line, true: colors.correct }}
+            thumbColor={showMarkSymbols ? colors.lime : colors.muted}
+          />
+        </View>
+      </View>
+      <View style={[base.card, base.section]}>
+        <View style={styles.between}>
+          <Text style={base.subtitle}>Bağlantı</Text>
+          <ConnectionBadge online={online} recovering={recovering} />
+        </View>
+        <View style={styles.endpoint}>
+          <Text style={base.caption}>Oyun sunucusu</Text>
+          <Text selectable style={base.label}>
+            {serverUrl}
+          </Text>
+        </View>
+        {openServerSettings && (
+          <Action
+            title="Sunucu adresini değiştir"
+            onPress={openServerSettings}
+            variant="secondary"
+            compact
+          />
+        )}
+      </View>
     </View>
   );
 }
@@ -553,14 +771,39 @@ export function ArenaApp({
 }: ArenaAppProps) {
   const [scene, setScene] = useState<Scene>(joinCode ? 'join' : 'home');
   const [busy, setBusy] = useState(false);
+  const [showMarkSymbols, setShowMarkSymbols] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
   const pending = useRef(false);
+  const preferenceWrites = useRef<Promise<void>>(Promise.resolve());
+  const preferenceTouched = useRef(false);
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const enabled = online && !recovering;
+  const entryOpen = scene === 'create' || scene === 'join';
+  const selectedTab = scene === 'scoring' ? 'help' : entryOpen ? 'home' : scene;
 
   useEffect(() => {
     if (!room && joinCode) setScene('join');
   }, [joinCode, room]);
+
+  useEffect(() => {
+    let active = true;
+    void SecureStore.getItemAsync(marksPreferenceKey)
+      .then((stored) => {
+        if (active && !preferenceTouched.current && stored === 'false') setShowMarkSymbols(false);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function saveMarkSymbols(value: boolean) {
+    preferenceTouched.current = true;
+    setShowMarkSymbols(value);
+    preferenceWrites.current = preferenceWrites.current
+      .then(() => SecureStore.setItemAsync(marksPreferenceKey, String(value)))
+      .catch(() => setLocalError('Görünüm ayarı cihaza kaydedilemedi.'));
+  }
 
   useEffect(() => {
     scroller.current?.scrollTo({ y: 0, animated: false });
@@ -613,7 +856,7 @@ export function ArenaApp({
         return true;
       }
       if (scene !== 'home') {
-        open('home');
+        open(scene === 'scoring' ? 'help' : 'home');
         return true;
       }
       return false;
@@ -635,26 +878,25 @@ export function ArenaApp({
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        {!room && scene !== 'home' ? (
-          <Pressable accessibilityRole="button" onPress={() => open('home')} style={styles.back}>
-            <Text style={styles.backText}>‹ Ana menü</Text>
+        {!room && (entryOpen || scene === 'scoring') ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => open(scene === 'scoring' ? 'help' : 'home')}
+            style={styles.back}
+          >
+            <Text style={styles.backText}>‹ {scene === 'scoring' ? 'Rehber' : 'Arena'}</Text>
           </Pressable>
+        ) : room && room.phase !== 'lobby' ? (
+          <View style={styles.roomHeader}>
+            <Text style={styles.roomHeaderTitle} numberOfLines={1}>
+              {room.name}
+            </Text>
+            <Text style={styles.roomHeaderCode}>Oda {room.code}</Text>
+          </View>
         ) : (
           <Brand />
         )}
-        <View style={styles.headerActions}>
-          <ConnectionBadge online={online} recovering={recovering} />
-          {!room && openServerSettings && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Sunucu ayarları"
-              onPress={openServerSettings}
-              style={styles.settings}
-            >
-              <Text style={styles.settingsText}>⚙</Text>
-            </Pressable>
-          )}
-        </View>
+        <ConnectionBadge online={online} recovering={recovering} />
       </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -700,6 +942,7 @@ export function ArenaApp({
                 key={`${room.code}:${room.matchId ?? ''}:${room.phase}:${room.round}`}
                 room={room}
                 online={enabled}
+                showMarkSymbols={showMarkSymbols}
                 submitGuess={async (word, requestId) => {
                   if (!room.matchId) throw new Error('Maç henüz başlamadı.');
                   await send('game:submit-guess', {
@@ -718,7 +961,18 @@ export function ArenaApp({
           ) : scene === 'home' ? (
             <Home open={open} enabled={enabled} />
           ) : scene === 'help' ? (
-            <Help close={() => open('home')} />
+            <Help openScoring={() => open('scoring')} />
+          ) : scene === 'scoring' ? (
+            <Scoring />
+          ) : scene === 'settings' ? (
+            <Settings
+              showMarkSymbols={showMarkSymbols}
+              saveMarkSymbols={saveMarkSymbols}
+              online={online}
+              recovering={recovering}
+              serverUrl={serverUrl}
+              openServerSettings={openServerSettings}
+            />
           ) : (
             <EntryForm
               key={scene}
@@ -737,6 +991,7 @@ export function ArenaApp({
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      {!room && !entryOpen && <Navigation selected={selectedTab} navigate={open} disabled={busy} />}
     </SafeAreaView>
   );
 }
@@ -753,7 +1008,6 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
   },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brand: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandText: { color: colors.ink, fontSize: 16, fontWeight: '900', flexShrink: 1 },
   brandMark: {
@@ -776,9 +1030,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     opacity: 0.5,
   },
-  settings: { paddingHorizontal: 8, minHeight: 44, justifyContent: 'center' },
-  settingsText: { fontSize: 23, color: colors.muted },
-  connection: { flexDirection: 'row', gap: 5, alignItems: 'center' },
+  roomHeader: { minWidth: 0, flex: 1, gap: 2 },
+  roomHeaderTitle: { color: colors.ink, fontWeight: '800', fontSize: 15 },
+  roomHeaderCode: { color: colors.violet, fontWeight: '700', fontSize: 11, letterSpacing: 0.3 },
+  connection: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    backgroundColor: colors.panel,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
   connectionDot: { width: 7, height: 7, backgroundColor: colors.lime, borderRadius: 4 },
   connectionPending: { backgroundColor: colors.amber },
   connectionLabel: { color: colors.muted, fontSize: 11, fontWeight: '700' },
@@ -794,22 +1059,41 @@ const styles = StyleSheet.create({
   },
   home: { gap: 14 },
   hero: {
-    paddingTop: 18,
+    paddingTop: 20,
     paddingHorizontal: 18,
     paddingBottom: 16,
     borderRadius: 22,
-    backgroundColor: colors.panel,
+    backgroundColor: colors.heroPanel,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: colors.heroLine,
     overflow: 'hidden',
   },
-  heroRule: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.violet,
-    marginBottom: 12,
+  heroBackdrop: { position: 'absolute', right: 8, top: 6, width: 126, height: 150 },
+  heroTileTop: {
+    position: 'absolute',
+    left: 49,
+    top: 7,
+    width: 78,
+    height: 78,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: colors.heroLine,
+    backgroundColor: colors.violetSoft,
+    transform: [{ rotate: '18deg' }],
   },
+  heroTileBottom: {
+    position: 'absolute',
+    left: 15,
+    top: 66,
+    width: 87,
+    height: 87,
+    borderRadius: 24,
+    backgroundColor: colors.heroTile,
+    borderWidth: 1,
+    borderColor: colors.heroTileLine,
+    transform: [{ rotate: '-15deg' }],
+  },
+  heroKicker: { marginBottom: 10, color: colors.violet, fontSize: 12, fontWeight: '800' },
   heroFirst: {
     fontSize: 48,
     lineHeight: 50,
@@ -831,6 +1115,52 @@ const styles = StyleSheet.create({
   heroStat: { minWidth: 64, flexGrow: 1, gap: 2 },
   statValue: { color: colors.ink, fontSize: 19, fontWeight: '800' },
   actions: { gap: 8 },
+  playAction: {
+    alignItems: 'center',
+    backgroundColor: colors.panel,
+    borderColor: colors.line,
+    borderRadius: 17,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 11,
+    minHeight: 76,
+    padding: 12,
+  },
+  playActionPrimary: { backgroundColor: colors.lime, borderColor: colors.lime },
+  playIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: colors.violetSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playIconPrimary: { backgroundColor: colors.limeInset },
+  playIconText: { color: colors.violet, fontSize: 24, fontWeight: '700' },
+  playTextPrimary: { color: colors.background },
+  playCaptionPrimary: { color: colors.limeDetail },
+  playArrow: { color: colors.muted, fontSize: 27 },
+  tabBar: { borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.panel },
+  tabList: { width: '100%', maxWidth: 560, alignSelf: 'center', flexDirection: 'row', padding: 6 },
+  tabButton: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  tabIcon: {
+    minWidth: 47,
+    minHeight: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconActive: { backgroundColor: colors.violetSoft },
+  tabGlyph: { color: colors.muted, fontWeight: '800', fontSize: 17 },
+  tabGlyphActive: { color: colors.lime },
+  tabLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  tabLabelActive: { color: colors.ink },
+  scoreValues: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  scoreChip: { paddingHorizontal: 12, paddingVertical: 8, gap: 2, borderRadius: 10 },
+  scoreText: { color: colors.ink, fontSize: 12, fontWeight: '600' },
+  settingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  settingText: { flex: 1, minWidth: 0, gap: 5 },
+  endpoint: { backgroundColor: colors.background, borderRadius: 11, padding: 12, gap: 3 },
   action: {
     minHeight: 50,
     paddingVertical: 12,

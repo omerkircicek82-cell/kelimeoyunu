@@ -431,6 +431,8 @@ function Scoreboard({ room }: { room: RoomView }) {
 
 export function RoundResults({ room }: { room: RoomView }) {
   const remaining = useRemaining(room);
+  const nobodySolved = room.players.every((player) => player.roundSolveMs === null);
+  const awardedCloseness = room.players.some((player) => player.roundCloseness);
   return (
     <div className="game-grid">
       <section className="panel result-panel">
@@ -452,6 +454,12 @@ export function RoundResults({ room }: { room: RoomView }) {
             ))}
           </div>
         )}
+        {nobodySolved && (
+          <p className="round-closeness-note">
+            Kelimeyi kimse bulamadı.{' '}
+            {awardedCloseness ? 'En yakın tahminler puan kazandı.' : 'Bu turda yakınlık puanı verilmedi.'}
+          </p>
+        )}
         <div className="table-scroll">
           <table className="results-table">
             <thead>
@@ -472,6 +480,20 @@ export function RoundResults({ room }: { room: RoomView }) {
                     <motion.span initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
                       +{number(player.roundPoints)}
                     </motion.span>
+                    {player.roundCloseness && (
+                      <div className="result-closeness">
+                        <span>
+                          <MarkIcon mark="correct" />
+                          <span className="sr-only">Doğru yerdeki harf sayısı </span>
+                          {player.roundCloseness.correct}
+                        </span>
+                        <span>
+                          <MarkIcon mark="present" />
+                          <span className="sr-only">Başka yerdeki harf sayısı </span>
+                          {player.roundCloseness.present}
+                        </span>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

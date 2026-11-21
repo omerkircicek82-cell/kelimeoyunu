@@ -2,6 +2,8 @@
 
 Arkadaşların davet koduyla aynı odaya katıldığı, gerçek zamanlı bir Türkçe kelime oyunu. Özel odalar 2–8 oyuncuyu destekler. Bir maçta oyuncular beş farklı kelimeyi, her turda 90 saniye ve beş tahmin hakkıyla çözmeye çalışır.
 
+Bir turda kimse kelimeyi çözemezse her oyuncunun en yüksek puanlı tahmin satırı karşılaştırılır. Yeşil harf 50, sarı harf 25 puan değerindedir. Sıfırdan yüksek en iyi sonucu alan oyuncuların her biri bu puanın tamamını maç toplamına ekler. Kelime çözülürse çözüm puanları geçerlidir.
+
 ## Android
 
 Mobil uygulama `apps/mobile` dizinindedir. Telefonda yerel ağ testi, Android APK önizlemesi ve Google Play için imzalı AAB oluşturma adımları [Android kılavuzunda](docs/android.md) yer alır.

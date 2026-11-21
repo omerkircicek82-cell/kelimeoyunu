@@ -35,12 +35,12 @@ class ManualClock implements Clock {
 const testAnswers = ['KALEM', 'ÇİÇEK', 'ISLAK', 'KÜÇÜK', 'OĞLAK'];
 const knownWrong = 'ARMUT';
 
-function fixture() {
+function fixture(answers = testAnswers, guessPool = [knownWrong]) {
   const clock = new ManualClock();
   const events: ArenaEvent[] = [];
   const arena = new Arena({
-    answers: testAnswers,
-    accepted: new Set([knownWrong]),
+    answers,
+    accepted: new Set(guessPool),
     clock,
     onPersist: event => events.push(event),
   });
@@ -70,6 +70,77 @@ test('a dictionary needs at least five distinct valid answer words', () => {
   const accepted = new Set(testAnswers);
   assert.throws(() => new Arena({ answers: [...testAnswers.slice(0, 4), testAnswers[0]], accepted }));
   assert.throws(() => new Arena({ answers: [...testAnswers.slice(0, 4), 'ABC'], accepted }));
+});
+
+const kabAnswers = ['KABAK', 'KABAN', 'KABUL', 'KABİN', 'KABLO'];
+
+test('only the closest single guess scores on an unsolved round and the points are persisted', () => {
+  const { arena, host, guest, clock, events, start, submit } =
+    fixture(kabAnswers, ['KABUS', 'ARMUT']);
+  start();
+  for (let attempt = 0; attempt < 4; attempt++) submit(guest, 'ARMUT');
+  const best = submit(host, 'KABUS').marks;
+  submit(host, 'ARMUT');
+
+  const correct = best.filter(mark => mark === 'correct').length;
+  const present = best.filter(mark => mark === 'present').length;
+  const points = correct * 50 + present * 25;
+  assert.ok(correct >= 3);
+  assert.ok(arena.snapshot(guest).players.every(player => !player.roundCloseness && player.points === 0));
+
+  clock.advance(ROUND_MS);
+  const result = arena.snapshot(guest);
+  const winner = result.players.find(player => player.id === host.playerId);
+  assert.equal(result.phase, 'intermission');
+  assert.equal(winner?.points, points);
+  assert.equal(winner?.roundPoints, points);
+  assert.equal(winner?.solved, 0);
+  assert.equal(winner?.roundSolveMs, null);
+  assert.deepEqual(winner?.roundCloseness, { correct, present, points });
+  assert.equal(result.players.find(player => player.id === guest.playerId)?.points, 0);
+  assert.ok(result.guesses.every(guess => guess.word === 'ARMUT'));
+  const saved = events.find(event => event.type === 'round:end');
+  assert.equal(saved?.results.find(player => player.playerId === host.playerId)?.points, points);
+  assert.equal(saved?.results.length, 2);
+
+  clock.advance(INTERMISSION_MS);
+  assert.equal(arena.snapshot(host).players[0].points, points);
+  assert.equal(arena.snapshot(host).players[0].roundCloseness, undefined);
+});
+
+test('tied closest players receive the same bonus when both exhaust their attempts', () => {
+  const { arena, host, guest, start, submit } = fixture(kabAnswers, ['KABUS']);
+  start();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    submit(host, 'KABUS');
+    submit(guest, 'KABUS');
+  }
+  const result = arena.snapshot(host);
+  assert.equal(result.phase, 'intermission');
+  assert.ok(result.players.every(player => player.status === 'exhausted' && player.rank === 1));
+  assert.ok((result.players[0].roundCloseness?.points ?? 0) >= 150);
+  assert.deepEqual(result.players[0].roundCloseness, result.players[1].roundCloseness);
+});
+
+test('a solved round or guesses without any matches produce no closeness bonus', () => {
+  const playing = fixture(kabAnswers, ['KABUS']);
+  playing.start();
+  playing.submit(playing.guest, 'KABUS');
+  for (const word of kabAnswers) {
+    const guess = playing.submit(playing.host, word);
+    if (guess.marks.every(mark => mark === 'correct')) break;
+  }
+  playing.clock.advance(ROUND_MS);
+  const solved = playing.arena.snapshot(playing.host);
+  assert.ok(solved.players.every(player => !player.roundCloseness));
+  assert.ok(solved.players[0].points >= 500);
+  assert.equal(solved.players[1].points, 0);
+
+  const misses = fixture(kabAnswers, ['ÇÖPÇÜ']);
+  misses.start();
+  assert.ok(misses.submit(misses.host, 'ÇÖPÇÜ').marks.every(mark => mark === 'absent'));
+  misses.clock.advance(ROUND_MS);
+  assert.ok(misses.arena.snapshot(misses.host).players.every(player => !player.roundCloseness && player.points === 0));
 });
 
 test('room creation, permissions, capacity, settings and host departure', () => {

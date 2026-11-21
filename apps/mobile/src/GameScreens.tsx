@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
+  CLOSENESS_CORRECT_POINTS,
+  CLOSENESS_PRESENT_POINTS,
   MAX_ATTEMPTS,
   ROUND_COUNT,
   ROUND_MS,
   WORD_LENGTH,
+  scoreCloseness,
+  type ClosenessScore,
+  type Guess,
   type Mark,
   type PlayerView,
   type RoomView,
@@ -27,7 +32,8 @@ const marked = {
   absent: { color: '#c6c3d5', surface: '#303043', border: '#42425d', symbol: '−', label: 'Eşleşme yok' },
 } satisfies Record<Mark, { color: string; surface: string; border: string; symbol: string; label: string }>;
 const strength: Record<Mark, number> = { absent: 0, present: 1, correct: 2 };
-const keyboardRows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ', 'ÂÎÛ'];
+const keyboardRows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ'];
+const extraLetters = 'ÂÎÛ';
 const playerStatus: Record<PlayerView['status'], string> = {
   playing: 'Tahmin ediyor',
   solved: 'Kelimeyi buldu',
@@ -79,6 +85,7 @@ interface GameScreensProps {
   canRestart: boolean;
   share: () => void;
   leave: () => Promise<void>;
+  showMarkSymbols?: boolean;
 }
 
 export function GameScreens({
@@ -89,12 +96,20 @@ export function GameScreens({
   canRestart,
   share,
   leave,
+  showMarkSymbols = true,
 }: GameScreensProps) {
   if (room.phase === 'countdown') return <Countdown room={room} />;
   if (room.phase === 'round') {
-    return <ActiveRound key={`${room.matchId}-${room.round}`} {...{ room, online, submitGuess }} />;
+    return (
+      <ActiveRound
+        key={`${room.matchId}-${room.round}`}
+        {...{ room, online, submitGuess, showMarkSymbols }}
+      />
+    );
   }
-  if (room.phase === 'intermission') return <RoundSummary key={room.round} room={room} />;
+  if (room.phase === 'intermission') {
+    return <RoundSummary key={room.round} room={room} showMarkSymbols={showMarkSymbols} />;
+  }
   if (room.phase === 'finished')
     return <MatchSummary {...{ room, online, restart, canRestart, share, leave }} />;
   return null;
@@ -121,18 +136,27 @@ function Countdown({ room }: { room: RoomView }) {
   );
 }
 
+const roundPanels = [
+  { id: 'guess', label: 'Tahmin' },
+  { id: 'standings', label: 'Sıralama' },
+  { id: 'scoring', label: 'Puanlama' },
+] as const;
+
+type RoundPanel = (typeof roundPanels)[number]['id'];
+
 function ActiveRound({
   room,
   online,
   submitGuess,
-}: Pick<GameScreensProps, 'room' | 'online' | 'submitGuess'>) {
+  showMarkSymbols,
+}: Pick<GameScreensProps, 'room' | 'online' | 'submitGuess' | 'showMarkSymbols'>) {
   const remaining = useRemaining(room);
-  const { width } = useWindowDimensions();
-  const tileSize = Math.min(49, Math.floor((width - 76) / WORD_LENGTH));
+  const { width, height } = useWindowDimensions();
+  const tileSize = Math.min(49, Math.floor((width - 76) / WORD_LENGTH), height < 740 ? 42 : 49);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
-  const [showStandings, setShowStandings] = useState(false);
+  const [panel, setPanel] = useState<RoundPanel>('guess');
   const draftRef = useRef('');
   const attempt = useRef<{ word: string; id: string; index: number } | null>(null);
   const attempts = useRef(0);
@@ -167,6 +191,22 @@ function ActiveRound({
     draftRef.current = word;
     setDraft(word);
     setError('');
+  }
+
+  function letterKey(letter: string) {
+    return (
+      <Key
+        key={letter}
+        caption={letter}
+        mark={keys[letter]}
+        blocked={!playable || pending}
+        onPress={() => {
+          if (!inFlight.current && draftRef.current.length < WORD_LENGTH) {
+            changeDraft(draftRef.current + letter);
+          }
+        }}
+      />
+    );
   }
 
   async function send() {
@@ -235,81 +275,156 @@ function ActiveRound({
         <View style={styles.timeTrack} importantForAccessibility="no">
           <View style={[styles.timeFill, { width: `${Math.min(100, (remaining / ROUND_MS) * 100)}%` }]} />
         </View>
-
-        <View style={styles.board}>
-          {Array.from({ length: MAX_ATTEMPTS }, (_, row) => {
-            const guess = room.guesses[row];
-            const active = row === draftIndex && playable;
-            const word = guess?.word ?? (active ? currentDraft : '');
-            return (
-              <View key={row} style={styles.boardRow}>
-                {Array.from({ length: WORD_LENGTH }, (_, column) => (
-                  <Tile
-                    key={column}
-                    size={tileSize}
-                    letter={word[column]}
-                    mark={guess?.marks[column]}
-                    active={active && column === currentDraft.length}
-                    invalid={active && !!error}
-                  />
-                ))}
-              </View>
-            );
-          })}
-        </View>
-        <Text
-          accessibilityLiveRegion={error ? 'polite' : 'none'}
-          style={[
-            styles.feedback,
-            !!error && styles.danger,
-            !error && mine?.status === 'solved' && styles.highlight,
-          ]}
-        >
-          {note}
-        </Text>
       </View>
 
-      <View style={styles.keyboard} accessibilityLabel="Türkçe tahmin klavyesi">
-        {keyboardRows.map((row) => (
-          <View key={row} style={[styles.keyboardRow, row.length === 3 && styles.extraKeys]}>
-            {Array.from(row, (letter) => (
+      <View style={styles.tabs} accessibilityRole="tablist">
+        {roundPanels.map(({ id, label }) => (
+          <Pressable
+            key={id}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: panel === id }}
+            onPress={() => setPanel(id)}
+            style={({ pressed }) => [
+              styles.tab,
+              panel === id && styles.tabSelected,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.tabLabel, panel === id && styles.tabSelectedLabel]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {panel === 'standings' && <LiveStandings room={room} />}
+      {panel === 'scoring' && <ScoringPanel guesses={room.guesses} />}
+      {panel === 'guess' && (
+        <View style={styles.roundStack}>
+          <View style={styles.roundCard}>
+            <View style={styles.board}>
+              {Array.from({ length: MAX_ATTEMPTS }, (_, row) => {
+                const guess = room.guesses[row];
+                const active = row === draftIndex && playable;
+                const word = guess?.word ?? (active ? currentDraft : '');
+                return (
+                  <View key={row} style={styles.boardRow}>
+                    {Array.from({ length: WORD_LENGTH }, (_, column) => (
+                      <Tile
+                        key={column}
+                        size={tileSize}
+                        letter={word[column]}
+                        mark={guess?.marks[column]}
+                        showSymbol={showMarkSymbols}
+                        active={active && column === currentDraft.length}
+                        invalid={active && !!error}
+                      />
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+            <Text
+              accessibilityLiveRegion={error ? 'polite' : 'none'}
+              style={[
+                styles.feedback,
+                !!error && styles.danger,
+                !error && mine?.status === 'solved' && styles.highlight,
+              ]}
+            >
+              {note}
+            </Text>
+          </View>
+
+          <View style={styles.keyboard} accessibilityLabel="Türkçe tahmin klavyesi">
+            {keyboardRows.map((row) => (
+              <View key={row} style={styles.keyboardRow}>
+                {Array.from(row, letterKey)}
+              </View>
+            ))}
+            <View style={styles.keyboardRow}>
+              {Array.from(extraLetters, letterKey)}
               <Key
-                key={letter}
-                caption={letter}
-                mark={keys[letter]}
-                blocked={!playable || pending}
+                caption="⌫"
+                label="Son harfi sil"
+                blocked={!playable || pending || !draft}
                 onPress={() => {
-                  if (!inFlight.current && draftRef.current.length < WORD_LENGTH) {
-                    changeDraft(draftRef.current + letter);
-                  }
+                  if (!inFlight.current) changeDraft(draftRef.current.slice(0, -1));
                 }}
               />
-            ))}
+              <Key
+                caption="Tahmin et"
+                submit
+                blocked={!playable || pending}
+                onPress={() => void send()}
+              />
+            </View>
           </View>
-        ))}
-        <View style={styles.keyboardRow}>
-          <Key
-            caption="⌫"
-            label="Son harfi sil"
-            blocked={!playable || pending || !draft}
-            onPress={() => {
-              if (!inFlight.current) changeDraft(draftRef.current.slice(0, -1));
-            }}
-          />
-          <Key caption="Tahmin et" submit blocked={!playable || pending} onPress={() => void send()} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function LiveStandings({ room }: { room: RoomView }) {
+  const completed = room.players.filter(
+    (player) =>
+      player.status === 'solved' || player.status === 'exhausted' || player.status === 'timeout',
+  ).length;
+  return (
+    <View style={styles.roundStack}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Canlı sıralama</Text>
+        <Text style={styles.detail}>
+          {completed}/{room.players.length} oyuncu turu bitirdi
+        </Text>
+      </View>
+      <PlayerList room={room} phase="round" />
+    </View>
+  );
+}
+
+function ScoringPanel({ guesses }: { guesses: readonly Guess[] }) {
+  const best = guesses.reduce<ClosenessScore | null>((closest, guess) => {
+    const score = scoreCloseness(guess.marks);
+    return !closest || score.points > closest.points ? score : closest;
+  }, null);
+
+  return (
+    <View style={styles.roundStack}>
+      {best && (
+        <View style={styles.roundCard}>
+          <Text style={styles.sectionTitle}>En yakın tahminin</Text>
+          <View style={styles.closenessCounts}>
+            <Text style={[styles.closenessCount, { color: marked.correct.color }]}>
+              {best.correct} yeşil
+            </Text>
+            <Text style={[styles.closenessCount, { color: marked.present.color }]}>
+              {best.present} sarı
+            </Text>
+          </View>
+        </View>
+      )}
+      <View style={[styles.roundCard, styles.bonusCard]}>
+        <Text style={styles.bonusTitle}>Yakınlık puanı</Text>
+        <Text style={styles.detail}>
+          Kimse kelimeyi bulamazsa her oyuncunun en iyi tahmin satırı karşılaştırılır.
+          En yüksek pozitif puan, o değere ulaşan her oyuncuya verilir.
+        </Text>
+        <View style={styles.closenessCounts}>
+          <Text style={[styles.closenessCount, { color: marked.correct.color }]}>
+            Yeşil +{CLOSENESS_CORRECT_POINTS}
+          </Text>
+          <Text style={[styles.closenessCount, { color: marked.present.color }]}>
+            Sarı +{CLOSENESS_PRESENT_POINTS}
+          </Text>
         </View>
       </View>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: showStandings }}
-        onPress={() => setShowStandings(!showStandings)}
-        style={styles.scoreToggle}
-      >
-        <Text style={styles.scoreToggleText}>Canlı sıralama</Text>
-        <Text style={styles.scoreToggleText}>{showStandings ? '−' : '+'}</Text>
-      </Pressable>
-      {showStandings && <PlayerList room={room} phase="round" />}
+      <View style={styles.roundCard}>
+        <Text style={styles.sectionTitle}>Kelimeyi bul</Text>
+        <Text style={styles.detail}>
+          Kelimeyi çözenler puan alır. Daha hızlı çözmek ve daha az tahmin kullanmak
+          puanı artırır.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -320,12 +435,14 @@ function Tile({
   mark,
   active,
   invalid,
+  showSymbol = true,
 }: {
   size: number;
   letter?: string;
   mark?: Mark;
   active?: boolean;
   invalid?: boolean;
+  showSymbol?: boolean;
 }) {
   const tone = mark && marked[mark];
   return (
@@ -343,7 +460,7 @@ function Tile({
       <Text style={[styles.tileLetter, tone && { color: tone.color }]} maxFontSizeMultiplier={1.25}>
         {letter}
       </Text>
-      {tone && (
+      {showSymbol && tone && (
         <Text style={[styles.tileMark, { color: tone.color }]} maxFontSizeMultiplier={1}>
           {tone.symbol}
         </Text>
@@ -394,10 +511,12 @@ function Key({
   );
 }
 
-function RoundSummary({ room }: { room: RoomView }) {
+function RoundSummary({ room, showMarkSymbols }: Pick<GameScreensProps, 'room' | 'showMarkSymbols'>) {
   const remaining = useRemaining(room);
   const { width } = useWindowDimensions();
   const size = Math.min(49, Math.floor((width - 70) / WORD_LENGTH));
+  const bonusPlayers = room.players.filter((player) => !!player.roundCloseness);
+  const mine = room.players.find((player) => player.id === room.playerId);
   return (
     <View style={styles.roundStack}>
       <View style={styles.centerCard}>
@@ -405,14 +524,26 @@ function RoundSummary({ room }: { room: RoomView }) {
         <Text style={styles.title}>Doğru kelime</Text>
         <View style={styles.boardRow}>
           {Array.from(room.answer ?? '').map((letter, index) => (
-            <Tile key={index} size={size} letter={letter} mark="correct" />
+            <Tile key={index} size={size} letter={letter} mark="correct" showSymbol={showMarkSymbols} />
           ))}
         </View>
         <Text style={styles.detail}>
           {room.round === ROUND_COUNT ? 'Maç sonucu' : 'Sonraki tur'} · {Math.ceil(remaining / 1000)} sn
         </Text>
       </View>
-      <Text style={styles.sectionTitle}>Tur sonuçları</Text>
+      {bonusPlayers.length > 0 && (
+        <View style={[styles.roundCard, styles.bonusCard]}>
+          <Text style={styles.bonusTitle}>Yakınlık puanı</Text>
+          <Text style={styles.detail}>
+            Kimse kelimeyi bulamadı. {bonusPlayers.map((player) => player.name).join(', ')}
+            {bonusPlayers.length === 1 ? ' en yakın tahmini yaptı.' : ' en yakın tahmini paylaştı.'}
+          </Text>
+        </View>
+      )}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Tur sonuçları</Text>
+        {mine && <Text style={styles.ownTotal}>Sen · +{pointFormat.format(mine.roundPoints)}</Text>}
+      </View>
       <PlayerList room={room} phase="intermission" />
     </View>
   );
@@ -530,8 +661,9 @@ function PlayerList({ room, phase }: { room: RoomView; phase: 'round' | 'intermi
             : phase === 'intermission'
               ? `${player.roundAttempts} tahmin${player.roundSolveMs !== null ? ` · ${secondsFormat.format(player.roundSolveMs / 1000)} sn` : ''}`
               : playerStatus[player.connected ? player.status : 'disconnected'];
+        const closeness = phase === 'intermission' ? player.roundCloseness : undefined;
         return (
-          <View key={player.id} style={styles.playerRow}>
+          <View key={player.id} style={[styles.playerRow, player.id === room.playerId && styles.ownPlayerRow]}>
             <Text style={styles.playerRank}>{player.rank}.</Text>
             <View style={styles.playerInfo}>
               <Text style={styles.playerName}>
@@ -539,6 +671,27 @@ function PlayerList({ room, phase }: { room: RoomView; phase: 'round' | 'intermi
                 {player.id === room.playerId ? ' · Sen' : ''}
               </Text>
               <Text style={styles.detail}>{detail}</Text>
+              {closeness && (
+                <Text style={styles.bonusDetail}>
+                  Yakınlık · {closeness.correct} yeşil · {closeness.present} sarı
+                </Text>
+              )}
+              {phase === 'round' && (
+                <View
+                  accessible
+                  accessibilityRole="progressbar"
+                  accessibilityLabel="Kullanılan tahmin"
+                  accessibilityValue={{ min: 0, max: MAX_ATTEMPTS, now: player.roundAttempts }}
+                  style={styles.attemptDots}
+                >
+                  {Array.from({ length: MAX_ATTEMPTS }, (_, attempt) => (
+                    <View
+                      key={attempt}
+                      style={[styles.attemptDot, attempt < player.roundAttempts && styles.attemptDotUsed]}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
             <Text style={styles.playerPoints}>
               {phase === 'intermission' ? '+' : ''}
@@ -622,7 +775,6 @@ const styles = StyleSheet.create({
   highlight: { color: palette.lime },
   keyboard: { gap: 4, alignSelf: 'center', width: '100%', maxWidth: 460 },
   keyboardRow: { flexDirection: 'row', gap: 3 },
-  extraKeys: { alignSelf: 'center', width: '40%', maxWidth: 180 },
   key: {
     flex: 1,
     minWidth: 0,
@@ -639,18 +791,46 @@ const styles = StyleSheet.create({
   submitCaption: { color: palette.ink },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.48 },
-  scoreToggle: {
+  tabs: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 48,
-    paddingHorizontal: 14,
+    gap: 3,
+    padding: 3,
     borderRadius: 12,
-    backgroundColor: palette.panel,
+    backgroundColor: palette.inset,
     borderWidth: 1,
     borderColor: palette.line,
   },
-  scoreToggleText: { color: palette.text, fontSize: 14, fontWeight: '800' },
+  tab: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  tabSelected: { backgroundColor: '#30294d' },
+  tabLabel: { color: palette.muted, fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  tabSelectedLabel: { color: palette.text },
+  sectionHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  bonusCard: { borderColor: '#6f542e', backgroundColor: '#261e21' },
+  bonusTitle: { color: marked.present.color, fontSize: 17, fontWeight: '800' },
+  bonusDetail: { color: marked.present.color, fontSize: 12, lineHeight: 17 },
+  ownTotal: { color: palette.lime, fontSize: 13, fontWeight: '800' },
+  closenessCounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  closenessCount: {
+    backgroundColor: palette.inset,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    fontWeight: '800',
+    fontSize: 13,
+  },
   playerList: {
     borderRadius: 12,
     overflow: 'hidden',
@@ -667,6 +847,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: palette.line,
   },
+  ownPlayerRow: { backgroundColor: '#242039' },
+  attemptDots: { flexDirection: 'row', gap: 3, marginTop: 3 },
+  attemptDot: { width: 11, height: 3, borderRadius: 3, backgroundColor: palette.line },
+  attemptDotUsed: { backgroundColor: palette.violet },
   playerRank: { width: 24, color: palette.violet, fontSize: 14, fontWeight: '800' },
   playerInfo: { flex: 1 },
   playerName: { color: palette.text, fontSize: 14, fontWeight: '800' },

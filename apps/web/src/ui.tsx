@@ -11,7 +11,7 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
-import type { Mark } from '@arena/shared';
+import { CLOSENESS_CORRECT_POINTS, CLOSENESS_PRESENT_POINTS, type Mark } from '@arena/shared';
 
 export type Preferences = { theme: 'dark' | 'light'; sound: boolean; symbols: boolean };
 
@@ -177,6 +177,11 @@ export function Help() {
         <li>Her turda 90 saniyen ve 5 tahmin hakkın var.</li>
         <li>Tahminini yazıp Enter tuşuna bas. Renkler bir sonraki tahminin için ipucu verir.</li>
         <li>Daha hızlı ve daha az denemeyle çözerek daha fazla puan kazan.</li>
+        <li>
+          Kimse çözemezse her oyuncunun en iyi geçerli tahmini karşılaştırılır. Doğru yerdeki her harf{' '}
+          {CLOSENESS_CORRECT_POINTS}, başka yerdeki her harf {CLOSENESS_PRESENT_POINTS} puan değerindedir. En
+          yüksek pozitif puana ulaşan oyuncular bu puanı alır.
+        </li>
       </ol>
       <div className="help-marks">
         <span>

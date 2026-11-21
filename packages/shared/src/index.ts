@@ -3,6 +3,8 @@ export const ROUND_MS = 90_000;
 export const MAX_ATTEMPTS = 5;
 export const WORD_LENGTH = 5;
 export const TURKISH_ALPHABET = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZÂÎÛ";
+export const CLOSENESS_CORRECT_POINTS = 50;
+export const CLOSENESS_PRESENT_POINTS = 25;
 
 export function normalizeWord(value: string) {
   return value.trim().normalize("NFC").toLocaleUpperCase("tr-TR");
@@ -11,6 +13,22 @@ export function normalizeWord(value: string) {
 export type Phase = "lobby" | "countdown" | "round" | "intermission" | "finished";
 export type Mark = "correct" | "present" | "absent";
 export type PlayerStatus = "playing" | "solved" | "exhausted" | "timeout" | "disconnected";
+
+export interface ClosenessScore {
+  correct: number;
+  present: number;
+  points: number;
+}
+
+export function scoreCloseness(marks: readonly Mark[]): ClosenessScore {
+  const correct = marks.filter(mark => mark === "correct").length;
+  const present = marks.filter(mark => mark === "present").length;
+  return {
+    correct,
+    present,
+    points: correct * CLOSENESS_CORRECT_POINTS + present * CLOSENESS_PRESENT_POINTS,
+  };
+}
 
 export interface Guess {
   word: string;
@@ -31,6 +49,7 @@ export interface PlayerView {
   fastestWord: string | null;
   status: PlayerStatus;
   roundPoints: number;
+  roundCloseness?: ClosenessScore;
   roundAttempts: number;
   roundSolveMs: number | null;
 }
