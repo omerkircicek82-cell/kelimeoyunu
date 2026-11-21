@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { Controller, Get, Module, ServiceUnavailableException } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { MAX_ATTEMPTS, ROUND_COUNT, ROUND_MS, WORD_LENGTH } from "@arena/shared";
+import { FINAL_GUESS_MS, MAX_ATTEMPTS, ROUND_COUNT, ROUND_MODES, ROUND_MS, WORD_LENGTH } from "@arena/shared";
 import { History } from "./history";
 import { mountGateway, originAllowed } from "./gateway";
 
@@ -17,7 +17,10 @@ const dictionary = await history.loadDictionary().catch(async () => {
 class StatusController {
   @Get("rules")
   rules() {
-    return { roundCount: ROUND_COUNT, roundMs: ROUND_MS, maxAttempts: MAX_ATTEMPTS, wordLength: WORD_LENGTH };
+    return {
+      roundCount: ROUND_COUNT, roundMs: ROUND_MS, roundModes: ROUND_MODES, finalGuessMs: FINAL_GUESS_MS,
+      maxAttempts: MAX_ATTEMPTS, wordLength: WORD_LENGTH,
+    };
   }
 
   @Get("health")

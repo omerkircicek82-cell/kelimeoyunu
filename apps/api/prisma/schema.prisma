@@ -30,11 +30,17 @@ model PlayerSession {
   @@index([expiresAt])
 }
 
+enum RoundMode {
+  timed
+  untimed
+}
+
 model GameRoom {
   id           String            @id
   code         String
   name         String
   maxPlayers   Int
+  roundMode    RoundMode         @default(timed)
   hostId       String
   host         Player            @relation(fields: [hostId], references: [id])
   createdAt    DateTime          @default(now())
@@ -59,6 +65,7 @@ model GameMatch {
   id        String        @id
   roomId    String
   room      GameRoom      @relation(fields: [roomId], references: [id])
+  roundMode RoundMode     @default(timed)
   createdAt DateTime      @default(now())
   endedAt   DateTime?
   rounds    GameRound[]

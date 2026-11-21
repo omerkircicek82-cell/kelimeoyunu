@@ -261,7 +261,13 @@ function RoomRoute({
     <main className={`site-width room-page page-${room.phase}`}>
       <RoomHeading room={room} leave={leave} />
       {!enabled && (
-        <ConnectionNotice message="Bağlantı yeniden kuruluyor. Oyun süresi işlemeye devam eder." />
+        <ConnectionNotice
+          message={
+            room.deadline === null
+              ? 'Bağlantı yeniden kuruluyor.'
+              : 'Bağlantı yeniden kuruluyor. Oyun süresi işlemeye devam eder.'
+          }
+        />
       )}
       {room.phase === 'lobby' && <Lobby room={room} enabled={enabled} notify={notify} />}
       {room.phase === 'countdown' && <Countdown room={room} />}

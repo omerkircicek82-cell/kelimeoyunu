@@ -1,9 +1,20 @@
 import { useState, type FormEvent } from 'react';
-import { Check, CircleMinus, Copy, Crown, DoorOpen, Lock, Play, Settings2, UsersRound } from 'lucide-react';
+import {
+  Check,
+  CircleMinus,
+  Copy,
+  Crown,
+  DoorOpen,
+  Lock,
+  Play,
+  Settings2,
+  Timer,
+  UsersRound,
+} from 'lucide-react';
 import { motion } from 'motion/react';
 import type { PlayerView, RoomView } from '@arena/shared';
 import { request } from './connection';
-import { Avatar, Modal, ShareButton } from './ui';
+import { Avatar, Modal, RoundModeField, roundModeLabel, ShareButton } from './ui';
 
 export function RoomHeading({ room, leave }: { room: RoomView; leave: () => void }) {
   return (
@@ -11,6 +22,9 @@ export function RoomHeading({ room, leave }: { room: RoomView; leave: () => void
       <div>
         <p className="room-label">
           <Lock size={13} /> Özel oda <code>{room.code}</code>
+          <span className="room-mode">
+            <Timer size={13} aria-hidden="true" /> {roundModeLabel[room.roundMode]}
+          </span>
         </p>
         <h1>{room.name}</h1>
       </div>
@@ -249,6 +263,7 @@ export function Lobby({
 function SettingsForm({ room, enabled, close }: { room: RoomView; enabled: boolean; close: () => void }) {
   const [name, setName] = useState(room.name);
   const [maxPlayers, setMaxPlayers] = useState(room.maxPlayers);
+  const [roundMode, setRoundMode] = useState(room.roundMode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const minPlayers = Math.max(2, room.players.length);
@@ -259,7 +274,7 @@ function SettingsForm({ room, enabled, close }: { room: RoomView; enabled: boole
     setBusy(true);
     setError('');
     try {
-      await request('room:settings', { name: name.trim(), maxPlayers });
+      await request('room:settings', { name: name.trim(), maxPlayers, roundMode });
       close();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Ayarlar kaydedilemedi.');
@@ -284,6 +299,7 @@ function SettingsForm({ room, enabled, close }: { room: RoomView; enabled: boole
           ))}
         </select>
       </label>
+      <RoundModeField value={roundMode} onChange={setRoundMode} />
       {error && (
         <p role="alert" className="form-error">
           {error}

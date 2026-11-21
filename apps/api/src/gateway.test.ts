@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import { io, type Socket } from "socket.io-client";
-import type { ClientEvents, Requests, ResponseFor, RoomView, ServerEvents } from "@arena/shared";
+import { FINAL_GUESS_MS, ROUND_MS, type ClientEvents, type Requests, type ResponseFor, type RoomView, type ServerEvents } from "@arena/shared";
 import type { ArenaEvent, Clock } from "./arena";
 import { mountGateway } from "./gateway";
 
@@ -113,7 +113,7 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
     const [a, b] = await Promise.all([active, other]);
     firstRound ??= a;
     assert.ok(a.matchId);
-    assert.equal(a.deadline, clock.now() + 90_000);
+    assert.equal(a.deadline, clock.now() + ROUND_MS);
     assert.equal(b.deadline, a.deadline);
     assert.equal(a.answer, null);
     assert.deepEqual(b.guesses, []);
@@ -137,6 +137,7 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
       assert.deepEqual(successful(await request(ada, "game:submit-guess", privateGuess)).guess, successful(first).guess);
       assert.equal((await request(ada, "game:submit-guess", { ...privateGuess, word: misses[1] })).ok, false);
     } else {
+      const lastChance = snapshot(deniz, room => room.phase === "round" && room.round === round && room.finalCountdown);
       const result = snapshot(deniz, room => room.phase === "intermission" && room.round === round);
       let solved = false;
       for (const [index, word] of answers.filter(word => !revealed.has(word)).entries()) {
@@ -149,7 +150,8 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
         }
       }
       assert.ok(solved);
-      clock.advance(90_000);
+      assert.equal((await lastChance).deadline, clock.now() + FINAL_GUESS_MS);
+      clock.advance(FINAL_GUESS_MS);
       const summary = await result;
       assert.ok(summary.answer);
       assert.ok(!revealed.has(summary.answer));
@@ -159,7 +161,7 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
       continue;
     }
     const result = snapshot(deniz, room => room.phase === "intermission");
-    clock.advance(90_000);
+    clock.advance(ROUND_MS);
     const summary = await result;
     assert.deepEqual(summary.guesses.map(guess => guess.word), [misses[1]]);
     assert.equal(summary.players.find(player => player.id === a.playerId)?.roundAttempts, 1);
@@ -175,17 +177,22 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
   assert.deepEqual(guestGuesses, [misses[1]]);
   assert.equal(persisted.filter(event => event.type === "round:end").length, 5);
   assert.equal(persisted.filter(event => event.type === "match:end").length, 1);
+  ada.disconnect();
+  ada = await connect();
+  successful(await request(ada, "room:resume", { code: owner.room.code, token: owner.token }));
   const rematch = snapshot(deniz, room => room.phase === "lobby");
   successful(await request(ada, "game:restart", {}));
   assert.ok((await rematch).players.every(player => !player.ready && player.points === 0));
+  successful(await request(ada, "room:settings", { name: "Yeni maç", maxPlayers: 2, roundMode: "untimed" }));
   successful(await request(deniz, "room:player-ready", { ready: true }));
   successful(await request(ada, "game:start", {}));
   const next = snapshot(ada, room => room.phase === "round");
   clock.advance(3_000);
-  assert.notEqual((await next).matchId, firstRound?.matchId);
-  ada.disconnect();
-  ada = await connect();
-  successful(await request(ada, "room:resume", { code: owner.room.code, token: owner.token }));
+  const newRound = await next;
+  assert.notEqual(newRound.matchId, firstRound?.matchId);
+  assert.equal(newRound.roundMode, "untimed");
+  assert.equal(newRound.deadline, null);
+  assert.equal(newRound.finalCountdown, false);
   assert.equal((await request(ada, "game:submit-guess", {
     matchId: firstRound!.matchId!, round: 1, requestId: "ada-retry-1", word: misses[0],
   })).ok, false);

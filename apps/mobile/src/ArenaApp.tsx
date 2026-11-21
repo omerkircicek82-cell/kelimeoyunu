@@ -18,6 +18,8 @@ import * as SecureStore from 'expo-secure-store';
 import {
   CLOSENESS_CORRECT_POINTS,
   CLOSENESS_PRESENT_POINTS,
+  DEFAULT_ROUND_MODE,
+  FINAL_GUESS_MS,
   MAX_ATTEMPTS,
   ROUND_COUNT,
   ROUND_MS,
@@ -26,6 +28,7 @@ import {
   type Requests,
   type ResponseFor,
   type RoomView,
+  type RoundMode,
 } from '@arena/shared';
 import { GameScreens } from './GameScreens';
 import { baseStyles as base, colors } from './Theme';
@@ -53,6 +56,10 @@ const tabs: ReadonlyArray<{ id: Tab; label: string; icon: string }> = [
   { id: 'settings', label: 'Ayarlar', icon: '⚙' },
 ];
 type Variant = 'primary' | 'secondary' | 'plain' | 'danger';
+const roundModeOptions: ReadonlyArray<{ value: RoundMode; label: string; detail: string }> = [
+  { value: 'timed', label: 'Süreli', detail: `Her tur ${ROUND_MS / 1000} saniyeyle başlar.` },
+  { value: 'untimed', label: 'Süresiz', detail: 'Sayaç ilk doğru tahminle başlar.' },
+];
 
 const sample: ReadonlyArray<{ word: string; marks: readonly Mark[] }> = [
   { word: 'ŞEHİR', marks: ['present', 'present', 'absent', 'absent', 'absent'] },
@@ -152,8 +159,8 @@ function Home({ open, enabled }: { open: (scene: Scene) => void; enabled: boolea
             <Text style={base.caption}>Tur</Text>
           </View>
           <View style={styles.heroStat}>
-            <Text style={styles.statValue}>{ROUND_MS / 1000} sn</Text>
-            <Text style={base.caption}>Tur başına</Text>
+            <Text style={styles.statValue}>{roundModeOptions.length}</Text>
+            <Text style={base.caption}>Oyun modu</Text>
           </View>
         </View>
       </View>
@@ -299,11 +306,23 @@ function Help({ openScoring }: { openScoring: () => void }) {
       <View style={[base.card, base.section]}>
         <Text style={base.subtitle}>Bir tur nasıl işliyor?</Text>
         <Text style={base.body}>
-          Beş harfli bir Türkçe kelime yaz. Her turda {MAX_ATTEMPTS} tahmin hakkın ve{' '}
-          {ROUND_MS / 1000} saniyen var.
+          Beş harfli bir Türkçe kelime yaz. Her turda {MAX_ATTEMPTS} tahmin hakkın var.
         </Text>
         <Text style={base.body}>
           Bir tahminden sonra harflerin aldığı renkleri sonraki tahmininde ipucu olarak kullan.
+        </Text>
+      </View>
+      <View style={[base.card, base.section]}>
+        <Text style={base.subtitle}>Oyun modları</Text>
+        {roundModeOptions.map(({ value, label, detail }) => (
+          <View key={value} style={styles.field}>
+            <Text style={base.label}>{label}</Text>
+            <Text style={base.body}>{detail}</Text>
+          </View>
+        ))}
+        <Text style={base.body}>
+          İlk doğru tahminden sonra, her iki modda da diğer oyuncuların kalan süresi{' '}
+          {FINAL_GUESS_MS / 1000} saniyeye ayarlanır. Sonraki doğru tahminlerde sayaç devam eder.
         </Text>
       </View>
       <View style={[base.card, base.section]}>
@@ -334,8 +353,9 @@ function Scoring() {
       <View style={[base.card, base.section]}>
         <Text style={base.subtitle}>Kelimeyi bulduğunda</Text>
         <Text style={base.body}>
-          Doğru tahmin 500 puan kazandırır. Kalan süreye ve kullanılmayan tahmin haklarına göre
-          bonus eklenir.
+          Doğru tahmin 500 puan kazandırır. Her iki modda da kullanılmayan tahmin hakları bonus
+          getirir. Süreli modda ilk {ROUND_MS / 1000} saniyenin kalan bölümüne göre hız bonusu da
+          eklenir.
         </Text>
       </View>
       <View style={[base.card, base.section]}>
@@ -462,6 +482,61 @@ function Capacity({
   );
 }
 
+function RoundModeSelector({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: RoundMode;
+  onChange: (value: RoundMode) => void;
+  disabled: boolean;
+}) {
+  return (
+    <View style={styles.field} accessibilityRole="radiogroup">
+      <Text style={base.label}>Oyun modu</Text>
+      {roundModeOptions.map((option) => {
+        const checked = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="radio"
+            accessibilityLabel={option.label}
+            accessibilityHint={option.detail}
+            accessibilityState={{ checked, disabled }}
+            disabled={disabled}
+            onPress={() => onChange(option.value)}
+            style={({ pressed }) => [
+              styles.modeChoice,
+              checked && styles.modeChoiceActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={[styles.modeRadio, checked && styles.modeRadioActive]}>
+              {checked && <View style={styles.modeDot} />}
+            </View>
+            <View style={styles.modeChoiceText}>
+              <Text style={base.label}>{option.label}</Text>
+              <Text style={base.caption}>{option.detail}</Text>
+            </View>
+          </Pressable>
+        );
+      })}
+      <Text style={base.caption}>
+        İlk doğru tahminden sonra diğer oyunculara {FINAL_GUESS_MS / 1000} saniye kalır.
+      </Text>
+    </View>
+  );
+}
+
+function RoundModeBadge({ mode }: { mode: RoundMode }) {
+  const label = mode === 'untimed' ? 'Süresiz' : 'Süreli';
+  return (
+    <View style={styles.modeBadge} accessibilityLabel={`Oyun modu: ${label}`}>
+      <Text style={styles.modeBadgeText}>{label}</Text>
+    </View>
+  );
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <View style={styles.field}>
@@ -480,7 +555,13 @@ function EntryForm({
 }: {
   mode: 'create' | 'join';
   invitation: string | null;
-  submit: (input: { playerName: string; name?: string; code: string; maxPlayers: number }) => void;
+  submit: (input: {
+    playerName: string;
+    name?: string;
+    code: string;
+    maxPlayers: number;
+    roundMode: RoundMode;
+  }) => void;
   enabled: boolean;
   busy: boolean;
 }) {
@@ -488,6 +569,7 @@ function EntryForm({
   const [name, setName] = useState('');
   const [code, setCode] = useState(invitation ?? '');
   const [maxPlayers, setMaxPlayers] = useState(4);
+  const [roundMode, setRoundMode] = useState<RoundMode>(DEFAULT_ROUND_MODE);
   const join = mode === 'join';
   const title = join ? 'Odaya katıl' : 'Oda oluştur';
   const valid = playerName.trim().length >= 2 && (!join || /^[A-Z0-9]{6}$/.test(code));
@@ -498,7 +580,13 @@ function EntryForm({
 
   function enter() {
     if (!valid || busy || !enabled) return;
-    submit({ playerName: playerName.trim(), name: name.trim() || undefined, code, maxPlayers });
+    submit({
+      playerName: playerName.trim(),
+      name: name.trim() || undefined,
+      code,
+      maxPlayers,
+      roundMode,
+    });
   }
 
   return (
@@ -556,6 +644,7 @@ function EntryForm({
               />
             </Field>
             <Capacity value={maxPlayers} set={setMaxPlayers} />
+            <RoundModeSelector value={roundMode} onChange={setRoundMode} disabled={busy} />
           </>
         )}
       </View>
@@ -634,7 +723,7 @@ function Lobby({
   kick: (playerId: string) => void;
   setReady: (ready: boolean) => void;
   start: () => void;
-  save: (changes: { name: string; maxPlayers: number }) => Promise<void>;
+  save: (changes: { name: string; maxPlayers: number; roundMode: RoundMode }) => Promise<void>;
   leave: () => void;
 }) {
   const host = room.hostId === room.playerId;
@@ -642,6 +731,7 @@ function Lobby({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(room.name);
   const [capacity, setCapacity] = useState(room.maxPlayers);
+  const [roundMode, setRoundMode] = useState(room.roundMode);
   const canStart =
     room.players.length >= 2 &&
     room.players.every((player) => player.connected && (player.id === room.hostId || player.ready));
@@ -654,6 +744,7 @@ function Lobby({
   function openSettings() {
     setName(room.name);
     setCapacity(room.maxPlayers);
+    setRoundMode(room.roundMode);
     setEditing(true);
   }
 
@@ -663,6 +754,7 @@ function Lobby({
         <Text accessibilityRole="header" style={base.title}>
           {room.name}
         </Text>
+        <RoundModeBadge mode={room.roundMode} />
       </View>
       <View style={[base.card, styles.inviteCard]}>
         <View>
@@ -704,6 +796,7 @@ function Lobby({
             />
           </Field>
           <Capacity value={capacity} set={setCapacity} minimum={room.players.length} />
+          <RoundModeSelector value={roundMode} onChange={setRoundMode} disabled={disabled} />
           <View style={styles.buttonRow}>
             <View style={styles.fill}>
               <Action
@@ -717,7 +810,7 @@ function Lobby({
               <Action
                 title="Kaydet"
                 onPress={() =>
-                  void save({ name: name.trim(), maxPlayers: capacity })
+                  void save({ name: name.trim(), maxPlayers: capacity, roundMode })
                     .then(() => setEditing(false))
                     .catch(() => {})
                 }
@@ -730,7 +823,7 @@ function Lobby({
       )}
       {host ? (
         <>
-          <Action title="Maçı başlat" onPress={start} disabled={disabled || !canStart} />
+          <Action title="Maçı başlat" onPress={start} disabled={disabled || !canStart || editing} />
           {!canStart && (
             <Text style={base.caption}>
               En az iki oyuncu gerekir. Oda sahibi dışındaki oyuncular hazır olduğunda maç
@@ -980,10 +1073,10 @@ export function ArenaApp({
               invitation={scene === 'join' ? joinCode : null}
               enabled={enabled}
               busy={busy}
-              submit={({ playerName, name, code, maxPlayers }) =>
+              submit={({ playerName, name, code, maxPlayers, roundMode }) =>
                 run(async () => {
                   if (scene === 'join') await send('room:join', { playerName, code });
-                  else await send('room:create', { playerName, name, maxPlayers });
+                  else await send('room:create', { playerName, name, maxPlayers, roundMode });
                   setScene('home');
                 })
               }
@@ -1250,6 +1343,39 @@ const styles = StyleSheet.create({
   capacityText: { color: colors.ink, fontSize: 16, fontWeight: '800' },
   capacitySelectedText: { color: colors.background },
   sectionHeader: { gap: 5 },
+  modeChoice: {
+    minHeight: 58,
+    gap: 10,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  modeChoiceActive: { backgroundColor: colors.violetSoft, borderColor: colors.violet },
+  modeRadio: {
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeRadioActive: { borderColor: colors.lime },
+  modeDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.lime },
+  modeChoiceText: { flex: 1, minWidth: 0, gap: 2 },
+  modeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.violetSoft,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  modeBadgeText: { color: colors.violet, fontSize: 12, fontWeight: '800' },
   inviteCard: {
     flexDirection: 'row',
     flexWrap: 'wrap',

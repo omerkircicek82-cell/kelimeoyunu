@@ -4,10 +4,14 @@ import {
   calculatePoints, evaluateGuess, isTurkishWord, normalizeWord, rankPlayers,
   type Stats,
 } from '@arena/game-engine';
-import { scoreCloseness, type ClosenessScore, type Guess, type GuessRequest, type Phase, type PlayerStatus, type PlayerView, type RoomView } from '@arena/shared';
+import {
+  DEFAULT_ROUND_MODE, FINAL_GUESS_MS, scoreCloseness,
+  type ClosenessScore, type Guess, type GuessRequest, type Phase, type PlayerStatus,
+  type PlayerView, type RoomView, type RoundMode,
+} from '@arena/shared';
 
 export type Identity = { code: string; playerId: string };
-export type Settings = { roomName?: string; maxPlayers?: number };
+export type Settings = { roomName?: string; maxPlayers?: number; roundMode?: RoundMode };
 
 export interface Clock {
   now(): number;
@@ -28,6 +32,7 @@ interface RoomMetadata {
   code: string;
   name: string;
   maxPlayers: number;
+  roundMode: RoundMode;
   hostId: string;
 }
 
@@ -56,7 +61,7 @@ export type ArenaEvent =
   | { type: 'player:create'; player: { id: string; name: string } }
   | { type: 'room:create' | 'room:update'; room: RoomMetadata }
   | { type: 'room:participant'; roomId: string; playerId: string }
-  | { type: 'match:start'; matchId: string; roomId: string }
+  | { type: 'match:start'; matchId: string; roomId: string; roundMode: RoundMode }
   | {
       type: 'round:end';
       roundId: string;
@@ -107,6 +112,7 @@ interface Match {
   round: number;
   roundId: string;
   startedAt: number;
+  finalCountdown: boolean;
 }
 
 interface Room extends RoomMetadata {
@@ -162,6 +168,7 @@ export class Arena {
     } while (this.rooms.has(code));
     const room: Room = {
       id: randomUUID(), code, name, maxPlayers, hostId: player.id,
+      roundMode: input.roundMode ?? DEFAULT_ROUND_MODE,
       players: new Map(), phase: 'lobby', deadline: null,
     };
     this.rooms.set(code, room);
@@ -229,6 +236,7 @@ export class Arena {
     }
     room.name = name;
     room.maxPlayers = maxPlayers;
+    room.roundMode = input.roundMode ?? room.roundMode;
     this.options.onPersist?.({ type: 'room:update', room: this.metadata(room) });
     this.changed(room);
   }
@@ -242,8 +250,10 @@ export class Arena {
     }
     const words = [...this.answers];
     const chosen = Array.from({ length: ROUNDS }, () => words.splice(randomInt(words.length), 1)[0]);
-    room.match = { id: randomUUID(), answers: chosen, round: 0, roundId: '', startedAt: 0 };
-    this.options.onPersist?.({ type: 'match:start', matchId: room.match.id, roomId: room.id });
+    room.match = { id: randomUUID(), answers: chosen, round: 0, roundId: '', startedAt: 0, finalCountdown: false };
+    this.options.onPersist?.({
+      type: 'match:start', matchId: room.match.id, roomId: room.id, roundMode: room.roundMode,
+    });
     this.setPhase(room, 'countdown', COUNTDOWN_MS, () => this.beginRound(room));
   }
 
@@ -260,11 +270,11 @@ export class Arena {
       if (prior.word !== word) throw new ArenaError('REQUEST_CONFLICT', 'Bu istek kimliği başka bir tahmin için kullanıldı.');
       return this.privateGuess(prior);
     }
-    if (input.round !== match.round || room.phase !== 'round' || room.deadline === null) {
+    if (input.round !== match.round || room.phase !== 'round') {
       throw new ArenaError('ROUND_CLOSED', 'Bu tur tahmine açık değil.');
     }
     const atMs = this.clock.now();
-    if (atMs >= room.deadline) {
+    if (room.deadline !== null && atMs >= room.deadline) {
       this.endRound(room);
       throw new ArenaError('ROUND_CLOSED', 'Tur süresi doldu.');
     }
@@ -282,7 +292,8 @@ export class Arena {
     if (word === answer) {
       round.status = 'solved';
       round.solveMs = atMs - match.startedAt;
-      round.points = calculatePoints(room.deadline - atMs, attempt);
+      const timeBonusBudget = room.roundMode === 'timed' ? ROUND_MS - round.solveMs : 0;
+      round.points = calculatePoints(timeBonusBudget, attempt);
       player.solved++;
       player.points += round.points;
       player.solveMs += round.solveMs;
@@ -293,7 +304,14 @@ export class Arena {
     } else if (attempt === ATTEMPTS) {
       round.status = 'exhausted';
     }
-    if (!this.finishIfDone(room)) this.changed(room);
+    if (!this.finishIfDone(room)) {
+      if (round.status === 'solved' && !match.finalCountdown) {
+        match.finalCountdown = true;
+        this.setPhase(room, 'round', FINAL_GUESS_MS, () => this.endRound(room));
+      } else {
+        this.changed(room);
+      }
+    }
     return this.privateGuess(guess);
   }
 
@@ -343,6 +361,7 @@ export class Arena {
     return {
       code: room.code, name: room.name, maxPlayers: room.maxPlayers,
       hostId: room.hostId, playerId: player.id, phase: room.phase,
+      roundMode: room.roundMode, finalCountdown: room.phase === 'round' && match?.finalCountdown === true,
       matchId: match?.id ?? null,
       round: match?.round ?? 0, deadline: room.deadline, serverNow: this.clock.now(),
       players, guesses: player.round.guesses.map(guess => this.privateGuess(guess)),
@@ -380,7 +399,10 @@ export class Arena {
   }
 
   private metadata(room: Room): RoomMetadata {
-    return { id: room.id, code: room.code, name: room.name, maxPlayers: room.maxPlayers, hostId: room.hostId };
+    return {
+      id: room.id, code: room.code, name: room.name, maxPlayers: room.maxPlayers, hostId: room.hostId,
+      roundMode: room.roundMode,
+    };
   }
 
   private addPlayer(room: Room, player: Player, owner = false): Identity {
@@ -472,11 +494,13 @@ export class Arena {
     match.round++;
     match.roundId = randomUUID();
     match.startedAt = this.clock.now();
+    match.finalCountdown = false;
     for (const player of room.players.values()) {
       player.round = newPlayerRound();
       if (player.left) player.round.status = 'timeout';
     }
-    this.setPhase(room, 'round', ROUND_MS, () => this.endRound(room));
+    const duration = room.roundMode === 'timed' ? ROUND_MS : undefined;
+    this.setPhase(room, 'round', duration, () => this.endRound(room));
     this.finishIfDone(room);
   }
 
@@ -490,7 +514,8 @@ export class Arena {
 
   private endRound(room: Room): void {
     const match = room.match!;
-    const endedAt = Math.min(this.clock.now(), room.deadline!);
+    const now = this.clock.now();
+    const endedAt = room.deadline === null ? now : Math.min(now, room.deadline);
     this.awardClosenessPoints(room);
     const guesses: StoredGuess[] = [];
     const results: RoundResult[] = [];

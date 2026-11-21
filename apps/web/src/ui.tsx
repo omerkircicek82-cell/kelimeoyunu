@@ -11,7 +11,15 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
-import { CLOSENESS_CORRECT_POINTS, CLOSENESS_PRESENT_POINTS, type Mark } from '@arena/shared';
+import {
+  CLOSENESS_CORRECT_POINTS,
+  CLOSENESS_PRESENT_POINTS,
+  FINAL_GUESS_MS,
+  MAX_ATTEMPTS,
+  ROUND_MS,
+  type Mark,
+  type RoundMode,
+} from '@arena/shared';
 
 export type Preferences = { theme: 'dark' | 'light'; sound: boolean; symbols: boolean };
 
@@ -174,9 +182,17 @@ export function Help() {
         Bir oda aç veya arkadaşının oda koduyla katıl. Her maçta aynı beş kelimeyi çözmek için yarışacaksınız.
       </p>
       <ol>
-        <li>Her turda 90 saniyen ve 5 tahmin hakkın var.</li>
+        <li>Her turda {MAX_ATTEMPTS} tahmin hakkın var.</li>
+        <li>
+          Süreli turlar {ROUND_MS / 1000} saniyeyle başlar. Süresiz turda sayaç ilk doğru tahminde başlar. Her
+          iki modda ilk doğru tahmin, diğer oyuncular için bir kez {FINAL_GUESS_MS / 1000} saniyelik son şans
+          başlatır.
+        </li>
         <li>Tahminini yazıp Enter tuşuna bas. Renkler bir sonraki tahminin için ipucu verir.</li>
-        <li>Daha hızlı ve daha az denemeyle çözerek daha fazla puan kazan.</li>
+        <li>
+          Her doğru çözüm taban puanı ve deneme bonusu kazandırır. Hız bonusu süreli moda özeldir ve turun
+          başındaki {ROUND_MS / 1000} saniye üzerinden hesaplanır.
+        </li>
         <li>
           Kimse çözemezse her oyuncunun en iyi geçerli tahmini karşılaştırılır. Doğru yerdeki her harf{' '}
           {CLOSENESS_CORRECT_POINTS}, başka yerdeki her harf {CLOSENESS_PRESENT_POINTS} puan değerindedir. En
@@ -195,6 +211,28 @@ export function Help() {
         </span>
       </div>
     </div>
+  );
+}
+
+export const roundModeLabel: Record<RoundMode, string> = { timed: 'Süreli', untimed: 'Süresiz' };
+
+export function RoundModeField({
+  value,
+  onChange,
+}: {
+  value: RoundMode;
+  onChange: (mode: RoundMode) => void;
+}) {
+  return (
+    <label>
+      Tur modu
+      <select value={value} onChange={(event) => onChange(event.currentTarget.value as RoundMode)}>
+        <option value="timed">
+          {roundModeLabel.timed} · {ROUND_MS / 1000} saniye
+        </option>
+        <option value="untimed">{roundModeLabel.untimed}</option>
+      </select>
+    </label>
   );
 }
 

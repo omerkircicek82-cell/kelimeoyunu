@@ -1,5 +1,9 @@
 export const ROUND_COUNT = 5;
 export const ROUND_MS = 90_000;
+export const FINAL_GUESS_MS = 30_000;
+export const ROUND_MODES = ["timed", "untimed"] as const;
+export type RoundMode = (typeof ROUND_MODES)[number];
+export const DEFAULT_ROUND_MODE: RoundMode = "timed";
 export const MAX_ATTEMPTS = 5;
 export const WORD_LENGTH = 5;
 export const TURKISH_ALPHABET = "ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZÂÎÛ";
@@ -61,6 +65,8 @@ export interface RoomView {
   hostId: string;
   playerId: string;
   phase: Phase;
+  roundMode: RoundMode;
+  finalCountdown: boolean;
   matchId: string | null;
   round: number;
   deadline: number | null;
@@ -87,13 +93,13 @@ export type Reply<T extends object = Record<never, never>> =
   | { ok: false; error: string };
 
 export interface Requests {
-  "room:create": { playerName: string; name?: string; maxPlayers: number };
+  "room:create": { playerName: string; name?: string; maxPlayers: number; roundMode?: RoundMode };
   "room:join": { playerName: string; code: string };
   "room:resume": { code: string; token: string };
   "room:leave": Record<string, never>;
   "room:player-ready": { ready: boolean };
   "room:player-kick": { playerId: string };
-  "room:settings": { name: string; maxPlayers: number };
+  "room:settings": { name: string; maxPlayers: number; roundMode?: RoundMode };
   "game:start": Record<string, never>;
   "game:restart": Record<string, never>;
   "game:submit-guess": GuessRequest;

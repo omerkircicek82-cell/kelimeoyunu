@@ -98,7 +98,7 @@ export function Landing({ open }: { open: (mode: Mode) => void }) {
           Kelimeleri çöz, zamana karşı yarış, arkadaşlarını geride bırak!
         </p>
         <p className="arena-landing__description">
-          5 kelime, 90 saniyelik turlar ve tek bir şampiyon! Arkadaşlarınla aynı arenada yarış, doğru
+          5 kelime, süreli veya süresiz turlar ve tek bir şampiyon! Arkadaşlarınla aynı arenada yarış, doğru
           kelimeleri herkesten önce bul ve zirveye çık.
         </p>
 

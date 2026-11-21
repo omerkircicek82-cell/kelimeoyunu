@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { COUNTDOWN_MS, INTERMISSION_MS, ROUND_MS } from '@arena/game-engine';
-import { Arena, ArenaError, type ArenaEvent, type Clock, type Identity } from './arena';
+import { FINAL_GUESS_MS, MAX_ATTEMPTS } from '@arena/shared';
+import { Arena, ArenaError, type ArenaEvent, type Clock, type Identity, type Settings } from './arena';
 
 class ManualClock implements Clock {
   private time = 1_700_000_000_000;
@@ -35,7 +36,7 @@ class ManualClock implements Clock {
 const testAnswers = ['KALEM', 'ÇİÇEK', 'ISLAK', 'KÜÇÜK', 'OĞLAK'];
 const knownWrong = 'ARMUT';
 
-function fixture(answers = testAnswers, guessPool = [knownWrong]) {
+function fixture(answers = testAnswers, guessPool = [knownWrong], settings: Settings = {}) {
   const clock = new ManualClock();
   const events: ArenaEvent[] = [];
   const arena = new Arena({
@@ -44,7 +45,7 @@ function fixture(answers = testAnswers, guessPool = [knownWrong]) {
     clock,
     onPersist: event => events.push(event),
   });
-  const host = arena.create({ name: 'Ayşe', roomName: 'Yarış', maxPlayers: 2 });
+  const host = arena.create({ name: 'Ayşe', roomName: 'Yarış', maxPlayers: 2, ...settings });
   const guest = arena.join({ name: 'Ömer', code: host.code });
 
   function start() {
@@ -73,6 +74,93 @@ test('a dictionary needs at least five distinct valid answer words', () => {
 });
 
 const kabAnswers = ['KABAK', 'KABAN', 'KABUL', 'KABİN', 'KABLO'];
+
+function solveFirstRound(game: ReturnType<typeof fixture>) {
+  for (const word of kabAnswers) {
+    if (game.submit(game.host, word).marks.every(mark => mark === 'correct')) return word;
+  }
+  throw new Error('Beklenen test cevabı bulunamadı');
+}
+
+test('the host selects the round mode in the lobby and the store records it for the match', () => {
+  const game = fixture();
+  assert.equal(game.arena.snapshot(game.guest).roundMode, 'timed');
+  expectError(() => game.arena.settings(game.guest, { roundMode: 'untimed' }), 'HOST_ONLY');
+  game.arena.settings(game.host, { roundMode: 'untimed' });
+  assert.equal(game.arena.snapshot(game.guest).roundMode, 'untimed');
+  const update = game.events.find(event => event.type === 'room:update');
+  assert.ok(update?.type === 'room:update');
+  assert.equal(update.room.roundMode, 'untimed');
+  game.start();
+  expectError(() => game.arena.settings(game.host, { roundMode: 'timed' }), 'MATCH_ACTIVE');
+  assert.equal(game.events.find(event => event.type === 'match:start')?.roundMode, 'untimed');
+});
+
+for (const { roundMode, beforeFirstSolve, secondScore } of [
+  { roundMode: 'timed', beforeFirstSolve: 10_000, secondScore: 950 },
+  { roundMode: 'untimed', beforeFirstSolve: 120_000, secondScore: 700 },
+] as const) {
+  test(`the first solver starts one shared 30-second countdown in ${roundMode} mode`, () => {
+    const game = fixture(kabAnswers, ['KABUS'], { roundMode, maxPlayers: 3 });
+    const third = game.arena.join({ code: game.host.code, name: 'Cem' });
+    game.arena.ready(third, true);
+    game.start();
+    const initial = game.arena.snapshot(third);
+    assert.equal(initial.deadline, roundMode === 'timed' ? game.clock.now() + ROUND_MS : null);
+    assert.equal(initial.finalCountdown, false);
+    game.clock.advance(beforeFirstSolve);
+    assert.equal(game.arena.snapshot(third).phase, 'round');
+    const answer = solveFirstRound(game);
+    const closing = game.arena.snapshot(third);
+    assert.equal(closing.deadline, game.clock.now() + FINAL_GUESS_MS);
+    assert.equal(closing.finalCountdown, true);
+    assert.equal(closing.answer, null);
+
+    game.clock.advance(5_000);
+    game.submit(game.guest, answer);
+    const stillClosing = game.arena.snapshot(third);
+    assert.equal(stillClosing.deadline, closing.deadline);
+    assert.equal(stillClosing.players.find(player => player.id === game.guest.playerId)?.roundPoints, secondScore);
+    game.clock.advance(FINAL_GUESS_MS - 5_000);
+    const finished = game.arena.snapshot(third);
+    assert.equal(finished.phase, 'intermission');
+    assert.equal(finished.finalCountdown, false);
+    assert.equal(finished.players.find(player => player.id === third.playerId)?.status, 'timeout');
+
+    game.clock.advance(INTERMISSION_MS);
+    const next = game.arena.snapshot(third);
+    assert.equal(next.round, 2);
+    assert.equal(next.finalCountdown, false);
+    assert.equal(next.deadline, roundMode === 'timed' ? game.clock.now() + ROUND_MS : null);
+  });
+}
+
+test('a timed first solve near expiration still grants the other player all 30 seconds', () => {
+  const game = fixture(kabAnswers, ['KABUS']);
+  game.start();
+  game.clock.advance(ROUND_MS - 1_000);
+  solveFirstRound(game);
+  game.clock.advance(2_000);
+  assert.equal(game.arena.snapshot(game.guest).phase, 'round');
+  assert.equal(game.arena.snapshot(game.guest).deadline! - game.clock.now(), FINAL_GUESS_MS - 2_000);
+  game.submit(game.guest, 'KABUS');
+  game.clock.stall(FINAL_GUESS_MS - 2_000);
+  expectError(() => game.submit(game.guest, 'KABUS'), 'ROUND_CLOSED');
+  assert.equal(game.arena.snapshot(game.guest).phase, 'intermission');
+});
+
+test('an untimed round with no solver ends when attempts run out and awards closeness', () => {
+  const game = fixture(kabAnswers, ['KABUS'], { roundMode: 'untimed' });
+  game.start();
+  game.clock.advance(2 * ROUND_MS);
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    game.submit(game.host, 'KABUS');
+    game.submit(game.guest, 'KABUS');
+  }
+  const result = game.arena.snapshot(game.host);
+  assert.equal(result.phase, 'intermission');
+  assert.ok(result.players.every(player => player.roundCloseness && player.roundPoints >= 150));
+});
 
 test('only the closest single guess scores on an unsolved round and the points are persisted', () => {
   const { arena, host, guest, clock, events, start, submit } =

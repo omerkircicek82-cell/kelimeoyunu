@@ -1,6 +1,8 @@
 # Kelime Arenası
 
-Arkadaşların davet koduyla aynı odaya katıldığı, gerçek zamanlı bir Türkçe kelime oyunu. Özel odalar 2–8 oyuncuyu destekler. Bir maçta oyuncular beş farklı kelimeyi, her turda 90 saniye ve beş tahmin hakkıyla çözmeye çalışır.
+Arkadaşların davet koduyla aynı odaya katıldığı, gerçek zamanlı bir Türkçe kelime oyunu. Özel odalar 2–8 oyuncuyu destekler. Bir maçta oyuncular beş farklı kelimeyi, tur başına beş tahmin hakkıyla çözmeye çalışır.
+
+Oda sahibi oyun başlamadan önce **Süreli** veya **Süresiz** modu seçebilir. Süreli tur 90 saniyeyle başlar. Süresiz turda oyuncular ilk doğru tahmine kadar sayaçsız oynar. İki modda da ilk doğru tahmin, kalan oyuncular için bir defaya mahsus 30 saniyelik son şans başlatır. Süreli modun hız bonusu turun ilk 90 saniyesine göre hesaplanır. Süresiz modda çözüm ve tahmin bonusları uygulanır.
 
 Bir turda kimse kelimeyi çözemezse her oyuncunun en yüksek puanlı tahmin satırı karşılaştırılır. Yeşil harf 50, sarı harf 25 puan değerindedir. Sıfırdan yüksek en iyi sonucu alan oyuncuların her biri bu puanın tamamını maç toplamına ekler. Kelime çözülürse çözüm puanları geçerlidir.
 

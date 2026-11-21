@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowRight, Lock, Plus } from 'lucide-react';
+import { DEFAULT_ROUND_MODE, type RoundMode } from '@arena/shared';
 import { rememberTicket, request } from './connection';
+import { RoundModeField } from './ui';
 
 export type EntryMode = 'create' | 'join';
 
@@ -26,6 +28,7 @@ export function RoomForm({
   const [roomName, setRoomName] = useState('');
   const [code, setCode] = useState(inviteCode ?? '');
   const [capacity, setCapacity] = useState(8);
+  const [roundMode, setRoundMode] = useState<RoundMode>(DEFAULT_ROUND_MODE);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -41,6 +44,7 @@ export function RoomForm({
               playerName: name.trim(),
               name: roomName.trim() || undefined,
               maxPlayers: capacity,
+              roundMode,
             })
           : await request('room:join', { playerName: name.trim(), code });
       rememberTicket(ticket);
@@ -95,6 +99,7 @@ export function RoomForm({
               </select>
             </label>
           </div>
+          <RoundModeField value={roundMode} onChange={setRoundMode} />
         </>
       ) : (
         <label>

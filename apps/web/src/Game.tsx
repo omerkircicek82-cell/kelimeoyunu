@@ -6,6 +6,7 @@ import {
   Clock3,
   CornerDownLeft,
   Delete,
+  Infinity,
   Medal,
   Radio,
   Sparkles,
@@ -14,6 +15,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import {
+  FINAL_GUESS_MS,
   MAX_ATTEMPTS,
   normalizeWord,
   ROUND_COUNT,
@@ -26,7 +28,7 @@ import {
   type RoomView,
 } from '@arena/shared';
 import { request, RequestError, useArena } from './connection';
-import { Avatar, MarkIcon, markLabel, playSound, ShareButton, type Preferences } from './ui';
+import { Avatar, MarkIcon, markLabel, playSound, roundModeLabel, ShareButton, type Preferences } from './ui';
 
 const numberFormat = new Intl.NumberFormat('tr-TR');
 const secondsFormat = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
@@ -53,7 +55,7 @@ function useRemaining(room: RoomView) {
     return () => window.clearInterval(interval);
   }, [deadline]);
 
-  return deadline === null ? 0 : Math.max(0, deadline - serverNow - Math.max(0, now - receivedAt));
+  return deadline === null ? null : Math.max(0, deadline - serverNow - Math.max(0, now - receivedAt));
 }
 
 function formatCountdown(ms: number) {
@@ -61,22 +63,34 @@ function formatCountdown(ms: number) {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
-function TimerDisplay({ remaining }: { remaining: number }) {
+function TimerDisplay({ remaining, finalCountdown }: { remaining: number | null; finalCountdown: boolean }) {
   return (
-    <div
-      className={`timer-display ${remaining <= 15000 ? 'timer-warning' : ''} ${remaining > 0 && remaining <= 5000 ? 'timer-urgent' : ''}`}
-    >
-      <Timer size={22} />
-      <span aria-label={`Kalan süre ${Math.ceil(remaining / 1000)} saniye`}>
-        {formatCountdown(remaining)}
+    <div className="timer-stack">
+      <span className="timer-phase" role="status">
+        {finalCountdown ? 'Son şans' : ''}
       </span>
+      {remaining === null ? (
+        <div className="timer-display timer-untimed">
+          <Infinity size={20} aria-hidden="true" />
+          <span>{roundModeLabel.untimed}</span>
+        </div>
+      ) : (
+        <div
+          className={`timer-display ${finalCountdown || remaining <= 15000 ? 'timer-warning' : ''} ${remaining > 0 && remaining <= 5000 ? 'timer-urgent' : ''}`}
+          role="timer"
+          aria-label={`Kalan süre ${Math.ceil(remaining / 1000)} saniye`}
+        >
+          <Timer size={22} aria-hidden="true" />
+          <span>{formatCountdown(remaining)}</span>
+        </div>
+      )}
     </div>
   );
 }
 
 export function Countdown({ room }: { room: RoomView }) {
   const remaining = useRemaining(room);
-  const count = Math.ceil(remaining / 1000);
+  const count = Math.ceil((remaining ?? 0) / 1000);
   return (
     <div className="panel countdown-panel">
       <Timer size={27} />
@@ -108,12 +122,13 @@ export function GameRound({
   preferences: Preferences;
 }) {
   const remaining = useRemaining(room);
+  const timerDuration = room.finalCountdown ? FINAL_GUESS_MS : ROUND_MS;
   const mine = room.players.find((player) => player.id === room.playerId);
   const solved = mine?.status === 'solved';
   const playable =
     enabled &&
     room.matchId !== null &&
-    remaining > 0 &&
+    (remaining === null || remaining > 0) &&
     mine?.status === 'playing' &&
     room.guesses.length < MAX_ATTEMPTS;
   const [draft, setDraft] = useState('');
@@ -236,25 +251,27 @@ export function GameRound({
               {room.round} <small>/ {ROUND_COUNT}</small>
             </strong>
           </div>
-          <TimerDisplay remaining={remaining} />
+          <TimerDisplay remaining={remaining} finalCountdown={room.finalCountdown} />
           <div className="round-label score-label">
             <span>Toplam puan</span>
             <strong>{number(mine?.points ?? 0)}</strong>
           </div>
         </div>
-        <div
-          className="duration-line"
-          role="progressbar"
-          aria-label="Tur süresi"
-          aria-valuemin={0}
-          aria-valuemax={90}
-          aria-valuenow={Math.ceil(remaining / 1000)}
-        >
-          <span
-            className={remaining <= 15000 ? 'low' : ''}
-            style={{ width: `${Math.min(100, (remaining / ROUND_MS) * 100)}%` }}
-          />
-        </div>
+        {remaining !== null && (
+          <div
+            className="duration-line"
+            role="progressbar"
+            aria-label={room.finalCountdown ? 'Son şans süresi' : 'Tur süresi'}
+            aria-valuemin={0}
+            aria-valuemax={timerDuration / 1000}
+            aria-valuenow={Math.ceil(Math.min(remaining, timerDuration) / 1000)}
+          >
+            <span
+              className={room.finalCountdown || remaining <= 15000 ? 'low' : ''}
+              style={{ width: `${Math.min(100, (remaining / timerDuration) * 100)}%` }}
+            />
+          </div>
+        )}
         <div className="board" role="group" aria-label="Beş satırlı tahmin tahtası">
           {Array.from({ length: MAX_ATTEMPTS }, (_, index) => {
             const guess = room.guesses[index];
@@ -502,7 +519,7 @@ export function RoundResults({ room }: { room: RoomView }) {
         </div>
         <p className="round-next">
           <Clock3 size={17} /> {room.round < ROUND_COUNT ? 'Sonraki tur' : 'Maç sonucu'}{' '}
-          <strong>{Math.ceil(remaining / 1000)} sn</strong>
+          <strong>{Math.ceil((remaining ?? 0) / 1000)} sn</strong>
         </p>
       </section>
       <Scoreboard room={room} />

@@ -3,7 +3,7 @@ import type { Server as HttpServer } from "node:http";
 import { isIP } from "node:net";
 import { Server, type Socket } from "socket.io";
 import { z } from "zod";
-import type { ClientEvents, PublicPhase, Reply, RoomTicket, RoomView, ServerEvents } from "@arena/shared";
+import { ROUND_MODES, type ClientEvents, type PublicPhase, type Reply, type RoomTicket, type RoomView, type ServerEvents } from "@arena/shared";
 import { Arena, ArenaError, type ArenaOptions } from "./arena";
 import type { History } from "./history";
 
@@ -18,6 +18,7 @@ const playerName = z.string().trim().min(1).max(24).regex(/^[^\p{C}<>]+$/u);
 const roomName = playerName.max(40);
 const code = z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/);
 const capacity = z.number().int().min(2).max(8);
+const roundMode = z.enum(ROUND_MODES).optional();
 const empty = z.object({}).strict();
 const guess = z.object({
   matchId: z.string().uuid(),
@@ -262,11 +263,11 @@ export function mountGateway(
     }
 
     socket.on("room:create", command(
-      z.object({ playerName, name: z.union([roomName, z.literal("")]).optional(), maxPlayers: capacity }).strict(),
+      z.object({ playerName, name: z.union([roomName, z.literal("")]).optional(), maxPlayers: capacity, roundMode }).strict(),
       input => {
         authorizeEntry();
         return issue(socket, arena.create({
-          name: input.playerName, roomName: input.name || undefined, maxPlayers: input.maxPlayers,
+          name: input.playerName, roomName: input.name || undefined, maxPlayers: input.maxPlayers, roundMode: input.roundMode,
         }));
       },
     ));
@@ -307,8 +308,8 @@ export function mountGateway(
       revoke(input.playerId);
       return {};
     }));
-    socket.on("room:settings", command(z.object({ name: roomName, maxPlayers: capacity }).strict(), input => {
-      arena.settings(identity(), { roomName: input.name, maxPlayers: input.maxPlayers });
+    socket.on("room:settings", command(z.object({ name: roomName, maxPlayers: capacity, roundMode }).strict(), input => {
+      arena.settings(identity(), { roomName: input.name, maxPlayers: input.maxPlayers, roundMode: input.roundMode });
       return {};
     }));
     socket.on("game:start", command(empty, () => {

@@ -31,7 +31,7 @@ export class History {
   }
 
   async check() {
-    await this.db.$queryRaw`SELECT 1 FROM "GameRoom" LIMIT 1`;
+    await this.db.$queryRaw`SELECT "roundMode" FROM "GameRoom" LIMIT 1`;
     if (this.failed) throw new Error("Maç geçmişi yazılamadı.");
     return "postgresql" as const;
   }
@@ -92,7 +92,7 @@ async function write(db: PrismaClient, event: HistoryEvent) {
       break;
     case "match:start":
       await db.gameMatch.createMany({
-        data: [{ id: event.matchId, roomId: event.roomId }],
+        data: [{ id: event.matchId, roomId: event.roomId, roundMode: event.roundMode }],
         skipDuplicates: true,
       });
       break;

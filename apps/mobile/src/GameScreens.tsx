@@ -3,6 +3,7 @@ import { AppState, Pressable, StyleSheet, Text, View, useWindowDimensions } from
 import {
   CLOSENESS_CORRECT_POINTS,
   CLOSENESS_PRESENT_POINTS,
+  FINAL_GUESS_MS,
   MAX_ATTEMPTS,
   ROUND_COUNT,
   ROUND_MS,
@@ -12,6 +13,7 @@ import {
   type Guess,
   type Mark,
   type PlayerView,
+  type RoundMode,
   type RoomView,
 } from '@arena/shared';
 
@@ -73,7 +75,7 @@ function useRemaining(room: RoomView) {
     };
   }, [room.deadline]);
 
-  if (anchor.deadline === null) return 0;
+  if (anchor.deadline === null) return null;
   return Math.max(0, anchor.deadline - anchor.serverNow - Math.max(0, now - anchor.observedAt));
 }
 
@@ -116,7 +118,7 @@ export function GameScreens({
 }
 
 function Countdown({ room }: { room: RoomView }) {
-  const remaining = useRemaining(room);
+  const remaining = useRemaining(room) ?? 0;
   const seconds = Math.ceil(remaining / 1000);
 
   return (
@@ -131,7 +133,11 @@ function Countdown({ room }: { room: RoomView }) {
         </Text>
       </View>
       <Text style={styles.title}>İlk kelimeye hazır ol</Text>
-      <Text style={styles.detail}>Beş tur, her turda beş tahmin hakkı.</Text>
+      <Text style={styles.detail}>
+        {room.roundMode === 'untimed' ? 'Süresiz tur' : `Süreli tur · ${ROUND_MS / 1000} saniye`}
+        {' · '}
+        {MAX_ATTEMPTS} tahmin hakkı
+      </Text>
     </View>
   );
 }
@@ -151,6 +157,8 @@ function ActiveRound({
   showMarkSymbols,
 }: Pick<GameScreensProps, 'room' | 'online' | 'submitGuess' | 'showMarkSymbols'>) {
   const remaining = useRemaining(room);
+  const timerLabel = room.finalCountdown ? 'Son şans' : 'Kalan süre';
+  const timerWindow = room.finalCountdown ? FINAL_GUESS_MS : ROUND_MS;
   const { width, height } = useWindowDimensions();
   const tileSize = Math.min(49, Math.floor((width - 76) / WORD_LENGTH), height < 740 ? 42 : 49);
   const [draft, setDraft] = useState('');
@@ -163,7 +171,10 @@ function ActiveRound({
   const inFlight = useRef(false);
   const mine = room.players.find((player) => player.id === room.playerId);
   const playable =
-    online && remaining > 0 && mine?.status === 'playing' && room.guesses.length < MAX_ATTEMPTS;
+    online &&
+    (remaining === null || remaining > 0) &&
+    mine?.status === 'playing' &&
+    room.guesses.length < MAX_ATTEMPTS;
   const draftIndex = room.guesses.length;
   const currentDraft = !attempt.current || attempt.current.index === draftIndex ? draft : '';
   const guessesRemaining = Math.max(0, MAX_ATTEMPTS - draftIndex);
@@ -258,13 +269,28 @@ function ActiveRound({
             </Text>
           </View>
           <View style={[styles.metric, styles.middleMetric]}>
-            <Text style={styles.metricLabel}>KALAN SÜRE</Text>
-            <Text
-              accessibilityLabel={`Kalan süre ${Math.ceil(remaining / 1000)} saniye`}
-              style={[styles.timerValue, remaining <= 10_000 && styles.danger]}
-            >
-              {timeLabel(remaining)}
-            </Text>
+            {remaining === null ? (
+              <>
+                <Text style={styles.metricLabel}>SÜRE</Text>
+                <Text style={[styles.timerValue, styles.untimedValue]}>Süresiz</Text>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.metricLabel, room.finalCountdown && styles.finalTimer]}>
+                  {timerLabel.toLocaleUpperCase('tr-TR')}
+                </Text>
+                <Text
+                  accessibilityLabel={`${timerLabel} ${Math.ceil(remaining / 1000)} saniye`}
+                  style={[
+                    styles.timerValue,
+                    room.finalCountdown && styles.finalTimer,
+                    remaining <= 10_000 && styles.danger,
+                  ]}
+                >
+                  {timeLabel(remaining)}
+                </Text>
+              </>
+            )}
           </View>
           <View style={[styles.metric, styles.rightMetric]}>
             <Text style={styles.metricLabel}>PUAN</Text>
@@ -272,9 +298,17 @@ function ActiveRound({
           </View>
         </View>
 
-        <View style={styles.timeTrack} importantForAccessibility="no">
-          <View style={[styles.timeFill, { width: `${Math.min(100, (remaining / ROUND_MS) * 100)}%` }]} />
-        </View>
+        {remaining !== null && (
+          <View style={styles.timeTrack} importantForAccessibility="no">
+            <View
+              style={[
+                styles.timeFill,
+                room.finalCountdown && styles.finalTimeFill,
+                { width: `${Math.min(100, (remaining / timerWindow) * 100)}%` },
+              ]}
+            />
+          </View>
+        )}
       </View>
 
       <View style={styles.tabs} accessibilityRole="tablist">
@@ -296,7 +330,7 @@ function ActiveRound({
       </View>
 
       {panel === 'standings' && <LiveStandings room={room} />}
-      {panel === 'scoring' && <ScoringPanel guesses={room.guesses} />}
+      {panel === 'scoring' && <ScoringPanel guesses={room.guesses} mode={room.roundMode} />}
       {panel === 'guess' && (
         <View style={styles.roundStack}>
           <View style={styles.roundCard}>
@@ -382,7 +416,7 @@ function LiveStandings({ room }: { room: RoomView }) {
   );
 }
 
-function ScoringPanel({ guesses }: { guesses: readonly Guess[] }) {
+function ScoringPanel({ guesses, mode }: { guesses: readonly Guess[]; mode: RoundMode }) {
   const best = guesses.reduce<ClosenessScore | null>((closest, guess) => {
     const score = scoreCloseness(guess.marks);
     return !closest || score.points > closest.points ? score : closest;
@@ -421,8 +455,12 @@ function ScoringPanel({ guesses }: { guesses: readonly Guess[] }) {
       <View style={styles.roundCard}>
         <Text style={styles.sectionTitle}>Kelimeyi bul</Text>
         <Text style={styles.detail}>
-          Kelimeyi çözenler puan alır. Daha hızlı çözmek ve daha az tahmin kullanmak
-          puanı artırır.
+          {mode === 'untimed'
+            ? 'Süresiz turda doğru tahmine temel puan ve kullanılmayan tahmin hakkı bonusu verilir.'
+            : `Süreli turda doğru tahmine temel puan, kalan tahmin hakkı ve turun ilk ${ROUND_MS / 1000} saniyesine göre süre bonusu verilir.`}
+        </Text>
+        <Text style={styles.detail}>
+          İlk doğru tahminden sonra diğer oyunculara {FINAL_GUESS_MS / 1000} saniye verilir.
         </Text>
       </View>
     </View>
@@ -512,7 +550,7 @@ function Key({
 }
 
 function RoundSummary({ room, showMarkSymbols }: Pick<GameScreensProps, 'room' | 'showMarkSymbols'>) {
-  const remaining = useRemaining(room);
+  const remaining = useRemaining(room) ?? 0;
   const { width } = useWindowDimensions();
   const size = Math.min(49, Math.floor((width - 70) / WORD_LENGTH));
   const bonusPlayers = room.players.filter((player) => !!player.roundCloseness);
@@ -754,8 +792,11 @@ const styles = StyleSheet.create({
   metricValue: { fontSize: 21, color: palette.text, fontWeight: '900', fontVariant: ['tabular-nums'] },
   metricSmall: { fontSize: 13, color: palette.muted },
   timerValue: { fontSize: 24, color: palette.lime, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  untimedValue: { fontSize: 20 },
+  finalTimer: { color: marked.present.color },
   timeTrack: { height: 3, borderRadius: 3, backgroundColor: palette.line, overflow: 'hidden' },
   timeFill: { height: '100%', borderRadius: 3, backgroundColor: palette.violet },
+  finalTimeFill: { backgroundColor: marked.present.color },
   board: { gap: 4, alignItems: 'center' },
   boardRow: { flexDirection: 'row', gap: 4, justifyContent: 'center' },
   tile: {
