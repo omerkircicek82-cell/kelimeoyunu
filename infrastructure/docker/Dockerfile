@@ -26,7 +26,7 @@ CMD ["node", "apps/api/dist/main.mjs"]
 FROM deps AS web-build
 COPY --chown=node:node apps/web apps/web
 COPY --chown=node:node packages packages
-RUN npm run build -w @arena/web
+RUN npm run build -w @arena/web && chmod -R a+rX apps/web/dist
 
 FROM nginx:1.28-alpine AS web
 COPY infrastructure/nginx/web.conf /etc/nginx/conf.d/default.conf
