@@ -1,5 +1,8 @@
 {
   "extends": "expo/tsconfig.base",
-  "compilerOptions": { "strict": true },
+  "compilerOptions": {
+    "strict": true,
+    "paths": { "@arena/shared": ["../../packages/shared/src/index.ts"] }
+  },
   "include": ["**/*.ts", "**/*.tsx"]
 }

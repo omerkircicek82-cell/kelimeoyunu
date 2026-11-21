@@ -1,6 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 import type { ArenaEvent } from "./arena";
+import { recordOnlineRating } from "./membership";
 
 type SessionEvent = {
   type: "session:save";
@@ -12,7 +13,7 @@ type SessionEvent = {
 type HistoryEvent = ArenaEvent | SessionEvent;
 
 export class History {
-  private readonly db: PrismaClient;
+  readonly db: PrismaClient;
   private tail = Promise.resolve();
   private failed = false;
 
@@ -97,21 +98,22 @@ async function write(db: PrismaClient, event: HistoryEvent) {
       });
       break;
     case "round:end": {
-      const { roundId, matchId, number, answer, startedAt, endedAt, guesses, results } = event;
-      await db.$transaction([
-        db.gameRound.createMany({
+      const { roundId, matchId, number, answer, startedAt, endedAt, guesses, results, ratings } = event;
+      await db.$transaction(async tx => {
+        await tx.gameRound.createMany({
           data: [{
             id: roundId, matchId, number, answer,
             startedAt: new Date(startedAt), endedAt: new Date(endedAt),
           }],
           skipDuplicates: true,
-        }),
-        db.roundGuess.createMany({
+        });
+        await tx.roundGuess.createMany({
           data: guesses.map(({ atMs, ...guess }) => ({ ...guess, roundId, createdAt: new Date(atMs) })),
           skipDuplicates: true,
-        }),
-        db.roundPlayerResult.createMany({ data: results.map(result => ({ ...result, roundId })), skipDuplicates: true }),
-      ]);
+        });
+        await tx.roundPlayerResult.createMany({ data: results.map(result => ({ ...result, roundId })), skipDuplicates: true });
+        for (const rating of ratings) await recordOnlineRating(tx, rating.accountId, roundId, rating.delta);
+      });
       break;
     }
     case "match:end":

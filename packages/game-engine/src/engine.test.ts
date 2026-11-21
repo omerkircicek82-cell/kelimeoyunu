@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ratedRoundDelta } from '@arena/shared';
 import { calculatePoints, evaluateGuess, isTurkishWord, normalizeWord, rankPlayers } from './index';
 
 test('correct matches take priority over duplicate letters elsewhere', () => {
@@ -30,6 +31,13 @@ test('scoring follows the fixed time and attempt bonuses', () => {
   assert.equal(calculatePoints(20_000, 4), 616);
   assert.equal(calculatePoints(90_000, 1), 1000);
   assert.equal(calculatePoints(0, 5), 500);
+});
+
+test('account rating rewards a solved word and uses only the best failed guess', () => {
+  const close = { word: 'KATAR', marks: evaluateGuess('KALEM', 'KATAR') };
+  assert.equal(ratedRoundDelta([], false), -24);
+  assert.equal(ratedRoundDelta([close, close, close], false), -18);
+  assert.equal(ratedRoundDelta([{ word: 'KALEM', marks: evaluateGuess('KALEM', 'KALEM') }], true), 39);
 });
 
 test('ranking applies all tie breakers and gives equal entries the same rank', () => {

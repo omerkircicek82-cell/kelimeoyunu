@@ -8,6 +8,8 @@ datasource db {
 }
 
 model Player {
+  accountId    String?
+  account      Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
   id           String              @id
   name         String
   createdAt    DateTime            @default(now())
@@ -133,4 +135,55 @@ model MatchResult {
 model DictionaryWord {
   word     String  @id
   isAnswer Boolean @default(false)
+}
+
+model Account {
+  id           String           @id @default(uuid())
+  username     String           @unique
+  passwordHash String
+  rating       Int              @default(1000)
+  ratedGames   Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  sessions     AccountSession[]
+  ratingEvents RatingEvent[]
+  tickets      SoloChallenge[]
+  players      Player[]
+
+  @@index([rating(sort: Desc), username])
+}
+
+model AccountSession {
+  id        String   @id
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+
+  @@index([accountId])
+  @@index([expiresAt])
+}
+
+model RatingEvent {
+  id        String   @id
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  source    String
+  before    Int
+  delta     Int
+  after     Int
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+}
+
+model SoloChallenge {
+  id        String   @id @default(uuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  answer    String
+  expiresAt DateTime
+  playedAt  DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([accountId, playedAt, expiresAt])
 }

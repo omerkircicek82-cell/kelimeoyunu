@@ -10,6 +10,10 @@ Bir turda kimse kelimeyi çözemezse her oyuncunun en yüksek puanlı tahmin sat
 
 Mobil uygulama `apps/mobile` dizinindedir. Telefonda yerel ağ testi, Android APK önizlemesi ve Google Play için imzalı AAB oluşturma adımları [Android kılavuzunda](docs/android.md) yer alır.
 
+Android ana ekranından Online, Çevrimdışı veya Lider Tablosu açılabilir. Çevrimdışı antrenman, cihazdaki Türkçe sözlükle süreli ve süresiz olarak çalışır. Misafirler genel puan kazanmadan oynar. Kayıtlı oyuncular 1.000 genel puanla başlar. Online tamamlanan her tur ve eşitlenen çevrimdışı tek kelimelik oyun, derece puanına işlenir.
+
+Kelime çözülürse 24 puan eklenir, çözülmezse 24 puan düşer. En iyi tahmin satırındaki her yeşil harf 3, sarı harf 1 puan ekler. Genel puan sıfırın altına inmez. Kayıtlı Android cihazları oyun sunucusundan en fazla sekiz açık çevrimdışı bilet alır. Tamamlanan biletli oyunlar bağlantı geri gelince bir kez eşitlenir. Biletler yedi gün boyunca geçerlidir. Çevrimdışı istemci cevabı yerel olarak tuttuğu için bu sonuçlar, online maçlarla aynı düzeyde hileye dayanıklı değildir.
+
 ## Gereksinimler
 
 - Yerel geliştirme için Node.js 22.12+ (22.x) veya 24.x ve npm

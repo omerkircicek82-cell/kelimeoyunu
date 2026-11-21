@@ -6,7 +6,7 @@ import type { ClientEvents, Requests, ResponseFor, RoomTicket, RoomView, ServerE
 
 import { createArenaSocket } from "./server";
 
-type Ticket = { serverUrl: string; code: string; token: string };
+type Ticket = { serverUrl: string; code: string; token: string; accountId?: string };
 type Success<Event extends keyof Requests> = Extract<ResponseFor<Event>, { ok: true }>;
 type ConnectionState = { room: RoomView | null; online: boolean; recovering: boolean; error: string | null };
 type ArenaSocket = Socket<ServerEvents, ClientEvents>;
@@ -21,13 +21,13 @@ function saveSession(ticket: Ticket | null) {
   ).catch(() => {});
 }
 
-async function loadSession(serverUrl: string): Promise<Ticket | null> {
+async function loadSession(serverUrl: string, accountId?: string): Promise<Ticket | null> {
   try {
     await storageWrites;
     const raw = await SecureStore.getItemAsync(sessionKey);
     const ticket = raw ? JSON.parse(raw) as Partial<Ticket> : null;
-    if (ticket?.serverUrl === serverUrl && typeof ticket.code === "string" && typeof ticket.token === "string") {
-      return { serverUrl, code: ticket.code, token: ticket.token };
+    if (ticket?.serverUrl === serverUrl && ticket.accountId === accountId && typeof ticket.code === "string" && typeof ticket.token === "string") {
+      return { serverUrl, code: ticket.code, token: ticket.token, accountId };
     }
   } catch {
     // A missing or inaccessible credential leaves the app in guest mode.
@@ -51,15 +51,15 @@ async function request<Event extends keyof Requests>(
   return reply as Success<Event>;
 }
 
-export function useArenaConnection(serverUrl: string) {
-  const socket = useMemo(() => createArenaSocket(serverUrl), [serverUrl]);
+export function useArenaConnection(serverUrl: string, accessToken?: string, accountId?: string) {
+  const socket = useMemo(() => createArenaSocket(serverUrl, accessToken), [serverUrl, accessToken]);
   const [state, setState] = useState<ConnectionState>({
     room: null, online: false, recovering: false, error: null,
   });
   const ticket = useRef<Ticket | null>(null);
 
   function remember(reply: RoomTicket) {
-    ticket.current = { serverUrl, code: reply.room.code, token: reply.token };
+    ticket.current = { serverUrl, code: reply.room.code, token: reply.token, accountId };
     saveSession(ticket.current);
     receive(reply.room);
   }
@@ -109,13 +109,13 @@ export function useArenaConnection(serverUrl: string) {
       setState(value => ({ ...value, online: false, recovering: Boolean(ticket.current) }));
     }
 
-    function connectFailed(error: Error & { description?: unknown }) {
+    function connectFailed(error: Error & { description?: unknown; data?: unknown }) {
       if (__DEV__) {
         const status = typeof error.description === "number" ? ` (HTTP ${error.description})` : "";
         console.info(`[Kelime Arenası] Socket.IO bağlantısı: ${serverUrl} — ${error.message}${status}`);
       }
       setState(value => ({ ...value, online: false, recovering: Boolean(ticket.current),
-        error: "Oyun bağlantısı kurulamadı. Yeniden deneniyor." }));
+        error: error.data === "ACCOUNT_SESSION" ? error.message : "Oyun bağlantısı kurulamadı. Yeniden deneniyor." }));
     }
 
     function update(room: RoomView) {
@@ -133,7 +133,7 @@ export function useArenaConnection(serverUrl: string) {
     socket.on("connect_error", connectFailed);
     socket.on("room:update", update);
     socket.on("room:removed", removed);
-    void loadSession(serverUrl).then(saved => {
+    void loadSession(serverUrl, accountId).then(saved => {
       if (!mounted) return;
       ticket.current = saved;
       setState(value => ({ ...value, recovering: Boolean(saved) }));
@@ -156,7 +156,7 @@ export function useArenaConnection(serverUrl: string) {
       socket.off("room:removed", removed);
       socket.disconnect();
     };
-  }, [socket, serverUrl]);
+  }, [socket, serverUrl, accountId]);
 
   async function send<Event extends keyof Requests>(event: Event, data: Requests[Event]) {
     const reply = await request(socket, event, data);

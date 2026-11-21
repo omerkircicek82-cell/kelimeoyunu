@@ -18,6 +18,8 @@ npm.cmd start
 
 Expo Go ile terminaldeki QR kodu okutun. Başka bir LAN adresine geçerseniz hem Expo başlangıç ayarı hem uygulamadaki sunucu adresi güncellenebilir. QR kodu açılmıyorsa telefonun bilgisayardaki Expo portuna, oyun bağlantısı için de Docker’ın 8080 portuna erişebildiğinden emin olun.
 
+Expo Go ile çevrimdışı deneme yapmak için uygulamayı önce bağlantı açıkken yükleyin. Hesapla giriş yaptıysanız puanlı çevrimdışı biletlerin hazır olduğunu kontrol edin, ardından bağlantıyı kapatıp **Çevrimdışı** ekranını açın. Uygulamanın bağlantısız ortamda sıfırdan açılması için kurulu APK kullanın.
+
 ### Android Studio emülatörü
 
 Android Studio emülatörü Windows'taki oyun sunucusuna `http://10.0.2.2:8080` üzerinden erişir. Emülatörün Chrome tarayıcısında `http://10.0.2.2:8080/api/health` yanıtını kontrol edin. Expo Go yüklü emülatör açıkken `apps/mobile` dizininde çalıştırın.
@@ -93,5 +95,5 @@ Test APK’sı `apps/mobile/android/app/build/outputs/apk/release/app-release.ap
 - AAB’yi önce **Internal testing** kanalına yükleyip Play’den kurulan sürümde iki cihazla oda daveti, tam maç, yeniden bağlanma ve rövanşı deneyin. Hesabınıza uygulanan üretim erişimi ve test gereksinimlerini Play Console’da kontrol edin.
 - Mağaza simgesi `apps/mobile/assets/play-icon.png` (512 × 512). Özellik görseli `apps/mobile/assets/play-feature.png` (1024 × 500). Telefon ekran görüntülerini çalıştırdığınız uygulamadan ekleyin.
 - Kısa açıklama olarak “Arkadaşlarınla beş harfli Türkçe kelimeleri gerçek zamanlı tahmin et.” kullanabilirsiniz.
-- Oyuncunun paylaştığı takma ad ve oda adı ile tahmin, puan ve maç kayıtları sunucuda tutulur. Gizlilik politikasını ve **Data safety** yanıtlarını kendi sunucu sağlayıcınız, erişim kayıtlarınız, saklama süreniz ve iletişim bilgilerinizle uyumlu hazırlayın. Google Play’e girilecek gizlilik politikası URL’si internetten açılabilmeli.
+- Oyuncunun paylaştığı takma ad ve oda adı ile tahmin, puan ve maç kayıtları sunucuda tutulur. Hesap açan oyuncuların kullanıcı adı, parola özeti, genel puanı ve dereceli tur kayıtları da PostgreSQL'de saklanır. Eşitlenmeyi bekleyen çevrimdışı sonuçlar cihazda tutulur. Gizlilik politikasını ve **Data safety** yanıtlarını kendi sunucu sağlayıcınız, erişim kayıtlarınız, saklama süreniz ve iletişim bilgilerinizle uyumlu hazırlayın. Google Play’e girilecek gizlilik politikası URL’si internetten açılabilmeli.
 - İlk yüklemeye geçmeden önce paketin yayın imzasını, hedef SDK bilgilerini ve Play Console’un 16 KB sayfa boyutu denetimini kontrol edin.

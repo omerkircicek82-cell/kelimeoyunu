@@ -3,13 +3,14 @@ import type { Server as HttpServer } from "node:http";
 import { isIP } from "node:net";
 import { Server, type Socket } from "socket.io";
 import { z } from "zod";
-import { ROUND_MODES, type ClientEvents, type PublicPhase, type Reply, type RoomTicket, type RoomView, type ServerEvents } from "@arena/shared";
+import { ROUND_MODES, type AccountProfile, type ClientEvents, type PublicPhase, type Reply, type RoomTicket, type RoomView, type ServerEvents } from "@arena/shared";
 import { Arena, ArenaError, type ArenaOptions } from "./arena";
 import type { History } from "./history";
 
 type Identity = { code: string; playerId: string };
-type Client = Socket<ClientEvents, ServerEvents, Record<never, never>, { identity?: Identity }>;
-type Session = Identity & { id: string; expiresAt: number };
+type SocketData = { identity?: Identity; account?: AccountProfile };
+type Client = Socket<ClientEvents, ServerEvents, Record<never, never>, SocketData>;
+type Session = Identity & { id: string; expiresAt: number; accountId?: string };
 type Ack<T extends object> = (reply: Reply<T>) => void;
 
 const sessionMs = 12 * 60 * 60 * 1_000;
@@ -77,8 +78,9 @@ export function mountGateway(
   http: HttpServer,
   history: Pick<History, "enqueue">,
   options: Pick<ArenaOptions, "clock" | "answers" | "accepted">,
+  authenticate?: (token: string) => Promise<AccountProfile | null>,
 ) {
-  const io = new Server<ClientEvents, ServerEvents, Record<never, never>, { identity?: Identity }>(http, {
+  const io = new Server<ClientEvents, ServerEvents, Record<never, never>, SocketData>(http, {
     maxHttpBufferSize: 4_096,
     allowRequest: (req, callback) => callback(null, originAllowed(req.headers.origin, req.headers.host)),
     cors: (req, callback) => callback(null, { origin: originAllowed(req.headers.origin, req.headers.host) }),
@@ -165,7 +167,7 @@ export function mountGateway(
     const token = randomBytes(32).toString("base64url");
     const id = digest(token);
     const expiresAt = Date.now() + sessionMs;
-    sessions.set(id, { ...identity, id, expiresAt });
+    sessions.set(id, { ...identity, id, expiresAt, accountId: socket.data.account?.id });
     sessionIds.set(identity.playerId, id);
     history.enqueue({ type: "session:save", id, playerId: identity.playerId, expiresAt });
     bind(socket, identity);
@@ -203,9 +205,30 @@ export function mountGateway(
   }, 30_000);
   maintenance.unref();
 
-  io.use((socket, next) => {
-    if (rate.take(`connect:${clientAddress(socket)}`, 120, minute)) next();
-    else next(new Error("Çok fazla bağlantı denemesi."));
+  io.use(async (socket, next) => {
+    if (!rate.take(`connect:${clientAddress(socket)}`, 120, minute)) {
+      next(new Error("Çok fazla bağlantı denemesi."));
+      return;
+    }
+    const auth: unknown = socket.handshake.auth;
+    const token = auth && typeof auth === "object" && "accessToken" in auth ? auth.accessToken : undefined;
+    if (token === undefined) {
+      next();
+      return;
+    }
+    try {
+      const account = typeof token === "string" ? await authenticate?.(token) : null;
+      if (!account) {
+        const error = new Error("Hesap oturumu geçersiz. Yeniden giriş yap.") as Error & { data?: string };
+        error.data = "ACCOUNT_SESSION";
+        next(error);
+        return;
+      }
+      socket.data.account = account;
+      next();
+    } catch {
+      next(new Error("Hesap bağlantısı şu anda doğrulanamadı."));
+    }
   });
 
   io.on("connection", socket => {
@@ -267,19 +290,20 @@ export function mountGateway(
       input => {
         authorizeEntry();
         return issue(socket, arena.create({
-          name: input.playerName, roomName: input.name || undefined, maxPlayers: input.maxPlayers, roundMode: input.roundMode,
+          name: socket.data.account?.username ?? input.playerName, accountId: socket.data.account?.id,
+          roomName: input.name || undefined, maxPlayers: input.maxPlayers, roundMode: input.roundMode,
         }));
       },
     ));
     socket.on("room:join", command(z.object({ playerName, code }).strict(), input => {
       authorizeEntry();
-      return issue(socket, arena.join({ code: input.code, name: input.playerName }));
+      return issue(socket, arena.join({ code: input.code, name: socket.data.account?.username ?? input.playerName, accountId: socket.data.account?.id }));
     }));
     socket.on("room:resume", command(z.object({
       code, token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
     }).strict(), input => {
       const session = sessions.get(digest(input.token));
-      if (!session || session.expiresAt <= Date.now() || session.code !== input.code) {
+      if (!session || session.expiresAt <= Date.now() || session.code !== input.code || session.accountId !== socket.data.account?.id) {
         throw new ArenaError("SESSION_EXPIRED", "Oyun oturumunuz bulunamadı. Odaya tekrar katılın.");
       }
       const current = socket.data.identity;

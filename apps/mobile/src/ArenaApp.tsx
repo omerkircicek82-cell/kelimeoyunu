@@ -45,6 +45,8 @@ export interface ArenaAppProps {
     data: Requests[Event],
   ) => Promise<Extract<ResponseFor<Event>, { ok: true }>>;
   openServerSettings?: () => void;
+  openModes?: () => void;
+  accountName?: string;
 }
 
 type Tab = 'home' | 'help' | 'settings';
@@ -547,12 +549,14 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function EntryForm({
+  accountName,
   mode,
   invitation,
   submit,
   enabled,
   busy,
 }: {
+  accountName?: string;
   mode: 'create' | 'join';
   invitation: string | null;
   submit: (input: {
@@ -565,7 +569,7 @@ function EntryForm({
   enabled: boolean;
   busy: boolean;
 }) {
-  const [playerName, setPlayerName] = useState('');
+  const [playerName, setPlayerName] = useState(accountName ?? '');
   const [name, setName] = useState('');
   const [code, setCode] = useState(invitation ?? '');
   const [maxPlayers, setMaxPlayers] = useState(4);
@@ -599,6 +603,7 @@ function EntryForm({
           <TextInput
             accessibilityLabel="Oyuncu adın"
             value={playerName}
+            editable={!accountName}
             onChangeText={setPlayerName}
             placeholder="Örn. Deniz"
             placeholderTextColor={colors.muted}
@@ -861,6 +866,8 @@ export function ArenaApp({
   serverUrl,
   send,
   openServerSettings,
+  openModes,
+  accountName,
 }: ArenaAppProps) {
   const [scene, setScene] = useState<Scene>(joinCode ? 'join' : 'home');
   const [busy, setBusy] = useState(false);
@@ -952,6 +959,10 @@ export function ArenaApp({
         open(scene === 'scoring' ? 'help' : 'home');
         return true;
       }
+      if (openModes) {
+        openModes();
+        return true;
+      }
       return false;
     });
     return () => back.remove();
@@ -986,6 +997,10 @@ export function ArenaApp({
             </Text>
             <Text style={styles.roomHeaderCode}>Oda {room.code}</Text>
           </View>
+        ) : !room && openModes ? (
+          <Pressable accessibilityRole="button" onPress={openModes} style={styles.back}>
+            <Text style={styles.backText}>‹ Oyun modları</Text>
+          </Pressable>
         ) : (
           <Brand />
         )}
@@ -1069,6 +1084,7 @@ export function ArenaApp({
           ) : (
             <EntryForm
               key={scene}
+              accountName={accountName}
               mode={scene}
               invitation={scene === 'join' ? joinCode : null}
               enabled={enabled}

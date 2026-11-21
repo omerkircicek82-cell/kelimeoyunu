@@ -4,10 +4,13 @@ import { NestFactory } from "@nestjs/core";
 import { FINAL_GUESS_MS, MAX_ATTEMPTS, ROUND_COUNT, ROUND_MODES, ROUND_MS, WORD_LENGTH } from "@arena/shared";
 import { History } from "./history";
 import { mountGateway, originAllowed } from "./gateway";
+import { Membership } from "./membership";
+import { membershipController } from "./membership.controller";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL gerekli. PostgreSQL bağlantısını .env dosyasında ayarlayın.");
 const history = new History(databaseUrl);
+const membership = new Membership(history.db);
 const dictionary = await history.loadDictionary().catch(async () => {
   await history.close();
   throw new Error("PostgreSQL kelime sözlüğü yüklenemedi. Bağlantıyı kontrol edin ve npm run migrate çalıştırın.");
@@ -33,7 +36,7 @@ class StatusController {
   }
 }
 
-@Module({ controllers: [StatusController] })
+@Module({ controllers: [StatusController, membershipController(membership)] })
 class ApiModule {}
 
 const app = await NestFactory.create(ApiModule);
@@ -43,7 +46,7 @@ app.enableCors({
   },
 });
 app.getHttpAdapter().getInstance().disable("x-powered-by");
-const gateway = mountGateway(app.getHttpServer(), history, dictionary);
+const gateway = mountGateway(app.getHttpServer(), history, dictionary, token => membership.getProfile(token));
 const port = Number(process.env.PORT ?? 3000);
 await app.listen(port, "0.0.0.0");
 

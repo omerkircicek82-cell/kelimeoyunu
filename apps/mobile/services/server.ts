@@ -1,9 +1,10 @@
 import { io, type Socket } from "socket.io-client";
 import type { ClientEvents, ServerEvents } from "@arena/shared";
 
-export function createArenaSocket(serverUrl: string): Socket<ServerEvents, ClientEvents> {
+export function createArenaSocket(serverUrl: string, accessToken?: string): Socket<ServerEvents, ClientEvents> {
   return io(serverUrl, {
     autoConnect: false,
+    auth: accessToken ? { accessToken } : undefined,
     // Keep the polling connection when an emulator or proxy cannot upgrade to WebSocket.
     transports: ["polling", "websocket"],
     tryAllTransports: true,

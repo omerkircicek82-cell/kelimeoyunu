@@ -5,7 +5,7 @@ import {
   type Stats,
 } from '@arena/game-engine';
 import {
-  DEFAULT_ROUND_MODE, FINAL_GUESS_MS, scoreCloseness,
+  DEFAULT_ROUND_MODE, FINAL_GUESS_MS, ratedRoundDelta, scoreCloseness,
   type ClosenessScore, type Guess, type GuessRequest, type Phase, type PlayerStatus,
   type PlayerView, type RoomView, type RoundMode,
 } from '@arena/shared';
@@ -58,7 +58,7 @@ interface Standing extends Stats {
 }
 
 export type ArenaEvent =
-  | { type: 'player:create'; player: { id: string; name: string } }
+  | { type: 'player:create'; player: { id: string; name: string; accountId?: string } }
   | { type: 'room:create' | 'room:update'; room: RoomMetadata }
   | { type: 'room:participant'; roomId: string; playerId: string }
   | { type: 'match:start'; matchId: string; roomId: string; roundMode: RoundMode }
@@ -72,6 +72,7 @@ export type ArenaEvent =
       endedAt: number;
       guesses: StoredGuess[];
       results: RoundResult[];
+      ratings: { accountId: string; delta: number }[];
     }
   | { type: 'match:end'; matchId: string; endedAt: number; results: Standing[] };
 
@@ -91,10 +92,12 @@ interface PlayerRound {
   points: number;
   solveMs: number | null;
   closeness?: ClosenessScore;
+  ratedAccount?: string;
 }
 
 interface Player extends Stats {
   id: string;
+  accountId?: string;
   name: string;
   ready: boolean;
   connected: boolean;
@@ -155,11 +158,11 @@ export class Arena {
     this.reconnectMs = options.reconnectMs ?? RECONNECT_MS;
   }
 
-  create(input: Settings & { name: string }): Identity {
+  create(input: Settings & { name: string; accountId?: string }): Identity {
     if (this.rooms.size >= MAX_ROOMS) {
       throw new ArenaError('SERVER_FULL', 'Şu anda yeni oda açılamıyor. Lütfen daha sonra tekrar deneyin.');
     }
-    const player = this.newPlayer(input.name);
+    const player = this.newPlayer(input.name, input.accountId);
     const name = this.roomName(input.roomName ?? '') || `${player.name} odası`;
     const maxPlayers = this.capacity(input.maxPlayers ?? 8);
     let code: string;
@@ -175,11 +178,14 @@ export class Arena {
     return this.addPlayer(room, player, true);
   }
 
-  join(input: { code: string; name: string }): Identity {
+  join(input: { code: string; name: string; accountId?: string }): Identity {
     const room = this.getRoom(input.code.trim().toUpperCase());
     this.requireLobby(room);
     if (room.players.size >= room.maxPlayers) throw new ArenaError('ROOM_FULL', 'Oda dolu.');
-    const player = this.newPlayer(input.name);
+    if (input.accountId && [...room.players.values()].some(player => player.accountId === input.accountId)) {
+      throw new ArenaError('ACCOUNT_IN_ROOM', 'Bu hesap zaten odada.');
+    }
+    const player = this.newPlayer(input.name, input.accountId);
     return this.addPlayer(room, player);
   }
 
@@ -371,13 +377,13 @@ export class Arena {
     };
   }
 
-  private newPlayer(input: string): Player {
+  private newPlayer(input: string, accountId?: string): Player {
     const name = input.normalize('NFC').trim().replace(/ +/g, ' ');
     if (name.length < 2 || name.length > 24 || !/^[\p{L}\p{M}\p{N} _.-]+$/u.test(name)) {
       throw new ArenaError('INVALID_NAME', 'Oyuncu adı 2–24 karakter olmalı ve geçerli karakterler içermeli.');
     }
     return {
-      id: randomUUID(), name, ready: false, connected: true, left: false,
+      id: randomUUID(), name, accountId, ready: false, connected: true, left: false,
       points: 0, attempts: 0, solveMs: 0, solved: 0, fastestMs: null, fastestWord: null,
       round: newPlayerRound(), seenGuesses: new Map(),
     };
@@ -407,7 +413,7 @@ export class Arena {
 
   private addPlayer(room: Room, player: Player, owner = false): Identity {
     room.players.set(player.id, player);
-    this.options.onPersist?.({ type: 'player:create', player: { id: player.id, name: player.name } });
+    this.options.onPersist?.({ type: 'player:create', player: { id: player.id, name: player.name, accountId: player.accountId } });
     if (owner) this.options.onPersist?.({ type: 'room:create', room: this.metadata(room) });
     this.options.onPersist?.({ type: 'room:participant', roomId: room.id, playerId: player.id });
     this.changed(room);
@@ -498,6 +504,7 @@ export class Arena {
     for (const player of room.players.values()) {
       player.round = newPlayerRound();
       if (player.left) player.round.status = 'timeout';
+      else player.round.ratedAccount = player.accountId;
     }
     const duration = room.roundMode === 'timed' ? ROUND_MS : undefined;
     this.setPhase(room, 'round', duration, () => this.endRound(room));
@@ -519,10 +526,15 @@ export class Arena {
     this.awardClosenessPoints(room);
     const guesses: StoredGuess[] = [];
     const results: RoundResult[] = [];
+    const ratings: { accountId: string; delta: number }[] = [];
     for (const player of room.players.values()) {
       const round = player.round;
       if (round.status === 'playing') round.status = 'timeout';
       guesses.push(...round.guesses);
+      if (round.ratedAccount) ratings.push({
+        accountId: round.ratedAccount,
+        delta: ratedRoundDelta(round.guesses, round.status === 'solved'),
+      });
       results.push({
         playerId: player.id, status: round.status, points: round.points,
         attempts: round.guesses.length, solveMs: round.solveMs,
@@ -531,7 +543,7 @@ export class Arena {
     this.options.onPersist?.({
       type: 'round:end', roundId: match.roundId, matchId: match.id, number: match.round,
       answer: match.answers[match.round - 1], startedAt: match.startedAt,
-      endedAt, guesses, results,
+      endedAt, guesses, results, ratings,
     });
     this.setPhase(room, 'intermission', INTERMISSION_MS, () => {
       if (match.round < ROUNDS) this.beginRound(room);

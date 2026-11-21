@@ -131,3 +131,46 @@ export interface ServerEvents {
 }
 
 export type PublicPhase = Pick<RoomView, "round" | "deadline" | "serverNow">;
+
+export const INITIAL_RATING = 1_000;
+export const RATING_ROUND_POINTS = 24;
+export const RATING_GREEN_POINTS = 3;
+export const RATING_YELLOW_POINTS = 1;
+export const SOLO_TICKET_LIMIT = 8;
+
+export interface AccountProfile {
+  id: string;
+  username: string;
+  rating: number;
+  ratedGames: number;
+}
+
+export interface AuthReply {
+  token: string;
+  profile: AccountProfile;
+}
+
+export interface LeaderboardEntry extends Omit<AccountProfile, "id"> {
+  rank: number;
+}
+
+export interface SoloChallengeTicket {
+  id: string;
+  answer: string;
+  expiresAt: number;
+}
+
+export interface SoloResultRequest {
+  challengeId: string;
+  roundMode: RoundMode;
+  guesses: string[];
+  expired: boolean;
+}
+
+export function ratedRoundDelta(guesses: readonly Guess[], solved: boolean) {
+  const best = Math.max(0, ...guesses.map(guess => {
+    const { correct, present } = scoreCloseness(guess.marks);
+    return correct * RATING_GREEN_POINTS + present * RATING_YELLOW_POINTS;
+  }));
+  return (solved ? RATING_ROUND_POINTS : -RATING_ROUND_POINTS) + best;
+}
