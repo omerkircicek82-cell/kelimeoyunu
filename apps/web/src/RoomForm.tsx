@@ -16,11 +16,13 @@ function cleanCode(value: string) {
 export function RoomForm({
   mode,
   inviteCode,
+  accountName,
   entered,
   enabled,
 }: {
   mode: EntryMode;
   inviteCode?: string;
+  accountName?: string;
   entered: (code: string) => void;
   enabled: boolean;
 }) {
@@ -41,12 +43,12 @@ export function RoomForm({
       const ticket =
         mode === 'create'
           ? await request('room:create', {
-              playerName: name.trim(),
+              playerName: accountName ?? name.trim(),
               name: roomName.trim() || undefined,
               maxPlayers: capacity,
               roundMode,
             })
-          : await request('room:join', { playerName: name.trim(), code });
+          : await request('room:join', { playerName: accountName ?? name.trim(), code });
       rememberTicket(ticket);
       entered(ticket.room.code);
     } catch (reason) {
@@ -61,7 +63,8 @@ export function RoomForm({
       <label>
         Oyuncu adı
         <input
-          value={name}
+          value={accountName ?? name}
+          readOnly={Boolean(accountName)}
           onChange={(event) => setName(event.target.value)}
           placeholder="Arenada görünen adın"
           minLength={2}

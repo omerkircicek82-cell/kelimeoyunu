@@ -7,6 +7,7 @@ import {
   CircleUserRound,
   Moon,
   Sun,
+  Trophy,
   Volume2,
   VolumeX,
   X,
@@ -81,12 +82,16 @@ export function Header({
   home,
   help,
   profile,
+  accountName,
+  leaderboard,
   preferences,
   setPreferences,
 }: {
   home: () => void;
   help: () => void;
   profile: () => void;
+  accountName?: string;
+  leaderboard: () => void;
   preferences: Preferences;
   setPreferences: (value: Preferences) => void;
 }) {
@@ -98,6 +103,10 @@ export function Header({
           <button className="nav-help" onClick={help} aria-label="Nasıl oynanır?">
             <CircleHelp size={17} />
             <span>Nasıl oynanır?</span>
+          </button>
+          <button className="nav-help" onClick={leaderboard} aria-label="Lider tablosu" title="Lider tablosu">
+            <Trophy size={17} />
+            <span>Lider tablosu</span>
           </button>
           <div className="nav-divider" />
           <button
@@ -123,9 +132,10 @@ export function Header({
           >
             {preferences.theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
           </button>
-          <button className="nav-profile" onClick={profile} aria-label="Profil">
-            <CircleUserRound size={19} />
-            <span>Profil</span>
+          <button className="nav-profile account-button" onClick={profile} aria-label={accountName ? 'Hesabım' : 'Giriş / Kayıt'}>
+            <CircleUserRound size={18} />
+            <span className="account-label">{accountName ? 'Hesabım' : 'Giriş / Kayıt'}</span>
+            <span className="account-label-compact">{accountName ? 'Hesap' : 'Giriş'}</span>
           </button>
         </nav>
       </div>

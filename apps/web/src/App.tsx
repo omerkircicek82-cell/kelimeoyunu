@@ -1,17 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, CircleUserRound, DoorOpen, Link2, Lock, WifiOff } from 'lucide-react';
-import { attachConnection, forgetTicket, request, useArena } from './connection';
+import { ArrowRight, DoorOpen, Link2, Lock, WifiOff } from 'lucide-react';
+import { attachConnection, forgetTicket, hasRoomTicket, request, useArena } from './connection';
 import { Countdown, GameRound, MatchResults, RoundResults } from './Game';
 import { Landing } from './Landing';
 import { Lobby, RoomHeading } from './Lobby';
+import { useMembership } from './membership';
 import { RoomForm, type EntryMode } from './RoomForm';
 import { Header, Help, loadPreferences, Modal, type Preferences } from './ui';
 
 type Overlay = EntryMode | 'help' | 'profile' | 'leave';
+const AccountPanel = lazy(() => import('./Member').then(module => ({ default: module.AccountPanel })));
+const LeaderboardPage = lazy(() => import('./Member').then(module => ({ default: module.LeaderboardPage })));
 
 export function App() {
   const { room, connected, recovering, notice } = useArena();
+  const { session, refresh, invalidate, authenticate, logout, loadEntries } = useMembership();
+  const profile = session?.profile ?? null;
+  const [accountPending, setAccountPending] = useState(false);
+  const accountAction = useRef(false);
   const [preferences, setPreferences] = useState(loadPreferences);
   const [overlay, setOverlay] = useState<Overlay>();
   const [toast, setToast] = useState('');
@@ -19,9 +26,16 @@ export function App() {
   const [leaving, setLeaving] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const enabled = connected && !recovering;
+  const enabled = connected && !recovering && !accountPending;
 
-  useEffect(attachConnection, []);
+  useEffect(() => attachConnection(session?.token, profile?.id, invalidate), [
+    session?.token, profile?.id, invalidate,
+  ]);
+  useEffect(() => {
+    if (!session?.token || (room?.phase !== 'intermission' && room?.phase !== 'finished')) return;
+    const timer = setTimeout(() => void refresh(), 500);
+    return () => clearTimeout(timer);
+  }, [room?.phase, room?.round, session?.token, refresh]);
   useEffect(() => {
     document.documentElement.dataset.theme = preferences.theme;
     try {
@@ -77,14 +91,38 @@ export function App() {
     }
   }
 
-  const me = room?.players.find((player) => player.id === room.playerId);
+  async function changeAccount(operation: () => Promise<void>) {
+    if (accountAction.current || hasRoomTicket() || useArena.getState().room) {
+      throw new Error('Hesap değiştirmek için önce odadan ayrıl.');
+    }
+    accountAction.current = true;
+    setAccountPending(true);
+    try {
+      await operation();
+    } finally {
+      accountAction.current = false;
+      setAccountPending(false);
+    }
+  }
+
+  function openAccount() {
+    void refresh();
+    setOverlay('profile');
+  }
+
+  function openLeaderboard() {
+    setOverlay(undefined);
+    navigate('/siralama');
+  }
 
   return (
     <>
       <Header
         home={home}
         help={() => setOverlay('help')}
-        profile={() => setOverlay('profile')}
+        profile={openAccount}
+        accountName={profile?.username}
+        leaderboard={openLeaderboard}
         preferences={preferences}
         setPreferences={setPreferences}
       />
@@ -105,10 +143,24 @@ export function App() {
           }
         />
         <Route
+          path="/siralama"
+          element={
+            <Suspense fallback={<main className="site-width room-page" role="status">Sıralama yükleniyor…</main>}>
+              <LeaderboardPage
+                profile={profile}
+                loadEntries={loadEntries}
+                onAccount={openAccount}
+                onHome={() => navigate(room ? `/room/${room.code}` : '/')}
+              />
+            </Suspense>
+          }
+        />
+        <Route
           path="/room/:code"
           element={
             <RoomRoute
               enabled={enabled}
+              accountName={profile?.username}
               recovering={recovering}
               preferences={preferences}
               enter={enter}
@@ -125,14 +177,16 @@ export function App() {
         </Modal>
       )}
       {overlay === 'profile' && (
-        <Modal title="Oyuncu profili" onClose={() => setOverlay(undefined)}>
-          <div className="profile-card">
-            <CircleUserRound size={30} />
-            <div>
-              <strong>{me?.name ?? 'Misafir oyuncu'}</strong>
-              <p>Odaya katılırken oyuncu adını seçebilirsin.</p>
-            </div>
-          </div>
+        <Modal title={profile ? 'Hesabım' : 'Giriş ve kayıt'} onClose={() => setOverlay(undefined)}>
+          <Suspense fallback={<p role="status">Hesap ekranı yükleniyor…</p>}>
+            <AccountPanel
+              profile={profile}
+              onAuthenticate={(kind, credentials) => changeAccount(() => authenticate(kind, credentials))}
+              onLogout={() => changeAccount(logout)}
+              onLeaderboard={openLeaderboard}
+              accountActionsEnabled={!room && !recovering && !hasRoomTicket()}
+            />
+          </Suspense>
           <label className="preferences-control">
             <div>
               <strong>Harf işaretleri</strong>
@@ -152,7 +206,7 @@ export function App() {
           onClose={() => setOverlay(undefined)}
         >
           {!connected && <ConnectionNotice message="Sunucuya bağlanılıyor…" />}
-          <RoomForm mode={overlay} enabled={enabled} entered={enter} />
+          <RoomForm mode={overlay} accountName={profile?.username} enabled={enabled} entered={enter} />
         </Modal>
       )}
       {overlay === 'leave' && (
@@ -194,6 +248,7 @@ function ConnectionNotice({ message }: { message: string }) {
 
 function RoomRoute({
   enabled,
+  accountName,
   recovering,
   preferences,
   enter,
@@ -201,6 +256,7 @@ function RoomRoute({
   notify,
 }: {
   enabled: boolean;
+  accountName?: string;
   recovering: boolean;
   preferences: Preferences;
   enter: (code: string) => void;
@@ -250,7 +306,7 @@ function RoomRoute({
               Açık odana dön
             </button>
           ) : (
-            <RoomForm key={invite} mode="join" inviteCode={invite} entered={enter} enabled={enabled} />
+            <RoomForm key={invite} mode="join" inviteCode={invite} accountName={accountName} entered={enter} enabled={enabled} />
           )}
         </section>
       </main>

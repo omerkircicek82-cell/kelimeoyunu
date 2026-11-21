@@ -1375,3 +1375,36 @@ h2 {
     display: none;
   }
 }
+
+.account-button {
+  color: var(--arena-text);
+}
+.nav-profile > .account-label-compact {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .nav-profile.account-button {
+    display: flex;
+    gap: 3px;
+    width: auto;
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+  .account-button > svg {
+    width: 15px;
+  }
+  .nav-profile > .account-label-compact {
+    display: inline;
+  }
+}
+
+@media (max-width: 360px) {
+  .topbar .brand-name {
+    max-width: 52px;
+  }
+  .topbar .brand-name span {
+    display: block;
+    margin: 3px 0 0;
+  }
+}

@@ -2,7 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import { create } from 'zustand';
 import type { ClientEvents, Requests, RoomTicket, RoomView, ServerEvents } from '@arena/shared';
 
-type Ticket = { code: string; token: string };
+type Ticket = { code: string; token: string; accountId?: string };
 type ArenaState = {
   connected: boolean;
   recovering: boolean;
@@ -62,6 +62,11 @@ function readTicket(): Ticket | null {
 }
 
 let activeTicket = readTicket();
+let activeAccountId: string | undefined;
+
+export function hasRoomTicket() {
+  return activeTicket !== null;
+}
 
 function receiveRoom(room: RoomView) {
   const current = useArena.getState().room;
@@ -70,7 +75,7 @@ function receiveRoom(room: RoomView) {
 }
 
 export function rememberTicket({ token, room }: RoomTicket) {
-  activeTicket = { code: room.code, token };
+  activeTicket = { code: room.code, token, accountId: activeAccountId };
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(activeTicket));
   } catch {
@@ -89,7 +94,11 @@ export function forgetTicket(notice = '') {
   useArena.setState({ room: null, recovering: false, notice });
 }
 
-export function attachConnection() {
+export function attachConnection(accessToken?: string, accountId?: string, onAccountInvalid?: () => void) {
+  activeAccountId = accountId;
+  if (activeTicket && activeTicket.accountId !== accountId) forgetTicket();
+  socket.auth = accessToken ? { accessToken } : {};
+
   let epoch = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
   const opened = async () => {
@@ -98,7 +107,7 @@ export function attachConnection() {
     useArena.setState({ connected: true, recovering: Boolean(ticket) });
     if (!ticket) return;
     try {
-      const restored = await request('room:resume', ticket);
+      const restored = await request('room:resume', { code: ticket.code, token: ticket.token });
       if (attempt !== epoch) return;
       rememberTicket(restored);
       useArena.setState({ recovering: false });
@@ -117,7 +126,13 @@ export function attachConnection() {
     useArena.setState({ connected: false, recovering: false });
   };
   const removed = ({ error }: { error: string }) => forgetTicket(error);
+  const connectError = (error: Error & { data?: unknown }) => {
+    if (error.data !== 'ACCOUNT_SESSION') return;
+    forgetTicket('Hesap oturumun sona erdi. Yeniden giriş yap.');
+    onAccountInvalid?.();
+  };
   socket.on('connect', opened);
+  socket.on('connect_error', connectError);
   socket.on('disconnect', closed);
   socket.on('room:update', receiveRoom);
   socket.on('room:removed', removed);
@@ -125,6 +140,7 @@ export function attachConnection() {
   return () => {
     closed();
     socket.off('connect', opened);
+    socket.off('connect_error', connectError);
     socket.off('disconnect', closed);
     socket.off('room:update', receiveRoom);
     socket.off('room:removed', removed);
