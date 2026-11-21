@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "apps/*",
+    "apps/api",
+    "apps/web",
     "packages/*"
   ],
   "scripts": {
@@ -13,7 +14,9 @@
     "check": "tsc --noEmit",
     "test": "tsx --test packages/game-engine/src/*.test.ts apps/api/src/*.test.ts",
     "migrate": "node --experimental-wasm-modules --env-file-if-exists=.env apps/api/scripts/migrate.mjs",
-    "build:api": "esbuild apps/api/src/main.ts --bundle --format=esm --platform=node --target=node22 --packages=external --alias:@arena/shared=./packages/shared/src/index.ts --alias:@arena/game-engine=./packages/game-engine/src/index.ts --outfile=apps/api/dist/main.mjs"
+    "build:api": "esbuild apps/api/src/main.ts --bundle --format=esm --platform=node --target=node22 --packages=external --alias:@arena/shared=./packages/shared/src/index.ts --alias:@arena/game-engine=./packages/game-engine/src/index.ts --outfile=apps/api/dist/main.mjs",
+    "mobile": "npm --prefix apps/mobile start",
+    "mobile:check": "npm --prefix apps/mobile run check"
   },
   "devDependencies": {
     "@prisma/client-generator-ts": "7.10.1",
