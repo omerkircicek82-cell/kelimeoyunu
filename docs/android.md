@@ -20,6 +20,21 @@ Expo Go ile terminaldeki QR kodu okutun. Başka bir LAN adresine geçerseniz hem
 
 Expo Go ile çevrimdışı deneme yapmak için uygulamayı önce bağlantı açıkken yükleyin. Hesapla giriş yaptıysanız puanlı çevrimdışı biletlerin hazır olduğunu kontrol edin, ardından bağlantıyı kapatıp **Çevrimdışı** ekranını açın. Uygulamanın bağlantısız ortamda sıfırdan açılması için kurulu APK kullanın.
 
+### Dış ağdan Expo Go ile deneme
+
+Expo Go geliştirme paketinin varsayılan oyun sunucusu `http://83.66.10.8:8080` adresidir. `EXPO_PUBLIC_ARENA_URL` ayarlıysa Expo o adresi kullanır. Metro paketi için `8082`, oyun API’si ve Socket.IO için `8080` kullanılır.
+
+1. Proje kökündeki `.env` dosyasında `BIND_ADDRESS=0.0.0.0` ve `PUBLIC_PORT=8080` ayarlayın. Aynı dizinde `docker compose up -d --wait` çalıştırın.
+2. Modemde dış TCP `8080` portunu Windows bilgisayarın yerel IPv4 adresindeki `8080` portuna yönlendirin. Windows Güvenlik Duvarı’nda TCP `8080` için gelen bağlantılara izin verin.
+3. Telefonu mobil veriye geçirip `http://83.66.10.8:8080/api/health` adresini açın. `"status":"ok"` döndüğünde mevcut Expo oturumunu `Ctrl+C` ile durdurup `apps/mobile` klasöründe yeniden başlatın.
+
+```powershell
+$env:EXPO_PUBLIC_ARENA_URL = "http://83.66.10.8:8080"
+npm.cmd start -- --lan --port 8082 --clear
+```
+
+Expo Go’da dış ağdan çalışan `exp://83.66.10.8:8082` bağlantısını açıp **Online** ekranına girin. Bağlantı hatası sürerse `http://83.66.10.8:8080/socket.io/?EIO=4&transport=polling` yanıtının `0{"sid":` ile başladığını kontrol edin. Bu HTTP adresini test hesaplarıyla kullanın. Google Play sürümü için bir HTTPS sunucusu ayarlayın.
+
 ### Android Studio emülatörü
 
 Android Studio emülatörü Windows'taki oyun sunucusuna `http://10.0.2.2:8080` üzerinden erişir. Emülatörün Chrome tarayıcısında `http://10.0.2.2:8080/api/health` yanıtını kontrol edin. Expo Go yüklü emülatör açıkken `apps/mobile` dizininde çalıştırın.

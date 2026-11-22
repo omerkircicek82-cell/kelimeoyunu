@@ -12,7 +12,7 @@ import { MemberAuth, MemberLeaderboard, NativeModeHome } from "./src/MemberScree
 import { SoloGame } from "./src/SoloGame";
 
 const serverPreference = "arena.server-url";
-const buildServer = process.env.EXPO_PUBLIC_ARENA_URL?.trim();
+const buildServer = process.env.EXPO_PUBLIC_ARENA_URL?.trim() || (__DEV__ ? "http://83.66.10.8:8080" : undefined);
 
 function ConnectedArena({
   serverUrl, token, account, joinCode, clearInvite, openModes, openServerSettings, sync,
