@@ -24,6 +24,8 @@ import {
 } from '@arena/shared';
 import { evaluateGuess } from '@arena/game-engine';
 import { offlineAccepted, offlineAnswers } from '@arena/game-engine/offline-words';
+import { useMarkSymbols } from '../services/useMarkSymbols';
+import { ArenaBackdrop } from './ArenaArt';
 import { baseStyles as base, colors } from './Theme';
 
 const keyRows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ', 'ÂÎÛ'];
@@ -66,6 +68,7 @@ export function SoloGame({
   const currentDraft = useRef('');
   const finished = useRef(false);
   const { width, height } = useWindowDimensions();
+  const { showMarkSymbols } = useMarkSymbols();
   const tileSize = Math.max(
     30,
     Math.min(height < 740 ? 42 : 49, Math.floor((width - 78) / WORD_LENGTH)),
@@ -146,11 +149,12 @@ export function SoloGame({
 
   return (
     <SafeAreaView style={styles.screen}>
+      <ArenaBackdrop muted />
       <View style={styles.header}>
         <Pressable accessibilityRole="button" onPress={onBack} style={styles.back}>
           <Text style={styles.backText}>‹ Arena</Text>
         </Pressable>
-        <Text style={styles.headerText}>Çevrimdışı oyun</Text>
+        <Text style={styles.headerText}>Hızlı Oyna</Text>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[base.card, styles.gameCard]}>
@@ -198,6 +202,7 @@ export function SoloGame({
                       mark={guess?.marks[letterIndex]}
                       size={tileSize}
                       current={active && letterIndex === word.length}
+                      showMarkSymbols={showMarkSymbols}
                     />
                   ))}
                 </View>
@@ -252,11 +257,13 @@ function Tile({
   mark,
   size,
   current,
+  showMarkSymbols,
 }: {
   letter: string;
   mark?: Mark;
   size: number;
   current: boolean;
+  showMarkSymbols: boolean;
 }) {
   return (
     <View
@@ -270,7 +277,7 @@ function Tile({
       ]}
     >
       <Text style={styles.tileLetter}>{letter}</Text>
-      {mark && <Text style={styles.tileMark}>{markSymbols[mark]}</Text>}
+      {mark && showMarkSymbols && <Text style={styles.tileMark}>{markSymbols[mark]}</Text>}
     </View>
   );
 }
@@ -370,8 +377,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   back: { minHeight: 44, justifyContent: 'center', paddingRight: 12 },
-  backText: { color: colors.violet, fontSize: 15, fontWeight: '800' },
-  headerText: { color: colors.ink, fontWeight: '800', fontSize: 14 },
+  backText: { color: colors.tealLight, fontSize: 15, fontWeight: '800' },
+  headerText: { color: colors.ink, fontFamily: 'serif', fontWeight: '800', fontSize: 16 },
   content: {
     padding: 12,
     paddingBottom: 24,
@@ -391,7 +398,7 @@ const styles = StyleSheet.create({
   timer: { alignItems: 'flex-end' },
   lowTime: { color: colors.danger },
   progressRail: { height: 3, borderRadius: 2, backgroundColor: colors.line, overflow: 'hidden' },
-  progress: { height: 3, borderRadius: 2, backgroundColor: colors.violet },
+  progress: { height: 3, borderRadius: 2, backgroundColor: colors.tealLight },
   lowProgress: { backgroundColor: colors.danger },
   board: { alignSelf: 'center', gap: 4 },
   row: { flexDirection: 'row', gap: 4 },
@@ -413,7 +420,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '900',
   },
-  currentTile: { borderColor: colors.violet },
+  currentTile: { borderColor: colors.tealLight },
   error: { color: colors.danger, fontSize: 13, fontWeight: '600' },
   keyboard: { gap: 4 },
   keyRow: { flexDirection: 'row', gap: 3 },
@@ -432,10 +439,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   keyLabel: { color: colors.ink, fontSize: 15, fontWeight: '800', textAlign: 'center' },
-  primaryKey: { backgroundColor: colors.lime, borderColor: colors.lime },
+  primaryKey: { backgroundColor: colors.gold, borderColor: colors.gold },
   primaryLabel: { color: colors.background },
   pressed: { opacity: 0.7 },
   controls: { flexDirection: 'row', gap: 5 },
   earned: { gap: 2, padding: 8, borderRadius: 9, backgroundColor: colors.background },
-  answer: { color: colors.lime, letterSpacing: 1, fontSize: 18, fontWeight: '900' },
+  answer: { color: colors.gold, letterSpacing: 1, fontSize: 18, fontWeight: '900' },
 });

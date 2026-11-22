@@ -29,7 +29,7 @@
 
 .member-auth-switch button[aria-pressed='true'] {
   background: var(--subtle);
-  color: var(--arena-purple);
+  color: var(--arena-accent);
 }
 
 .member-field {
@@ -150,6 +150,7 @@
 
 .member-hero h1 {
   font-size: clamp(26px, 5vw, 42px);
+  font-family: var(--arena-display);
   font-weight: 875;
   letter-spacing: -0.045em;
   line-height: 1.1;
@@ -217,7 +218,7 @@
 }
 
 .member-empty svg {
-  color: var(--arena-purple);
+  color: var(--arena-accent);
 }
 
 .member-table {
@@ -252,7 +253,7 @@
 }
 
 .member-ranked-player small {
-  color: var(--arena-purple);
+  color: var(--arena-accent);
   font-weight: 700;
 }
 

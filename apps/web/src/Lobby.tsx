@@ -79,15 +79,15 @@ export function InviteCard({ room, notify }: { room: RoomView; notify: (message:
         onFocus={(event) => event.target.select()}
       />
       <ShareButton
-        title="Kelime Arenası"
-        text={`Kelime Arenası’na katıl. Oda kodu: ${room.code}`}
+        title="HarfArena"
+        text={`HarfArena’ya katıl. Oda kodu: ${room.code}`}
         url={url}
         label="Davet bağlantısını paylaş"
         notify={notify}
       />
       <ShareButton
-        title="Kelime Arenası"
-        text={`Kelime Arenası maçını izle. Oda kodu: ${room.code}`}
+        title="HarfArena"
+        text={`HarfArena maçını izle. Oda kodu: ${room.code}`}
         url={watchUrl.href}
         label="İzleyici bağlantısını paylaş"
         notify={notify}

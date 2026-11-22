@@ -1,18 +1,18 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, DoorOpen, Infinity, Link2, Lock, Timer, WifiOff } from 'lucide-react';
+import { ArrowRight, DoorOpen, Eye, Infinity, Link2, Lock, Plus, Timer, WifiOff } from 'lucide-react';
 import { ROUND_MS, type RoundMode, type SoloChallengeTicket } from '@arena/shared';
 import { attachConnection, forgetTicket, hasRoomTicket, request, useArena } from './connection';
 import { Countdown, GameRound, MatchResults, RoundResults, SpectatorRound } from './Game';
-import { Landing } from './Landing';
+import { Landing, type LandingAction } from './Landing';
 import { Lobby, RoomHeading } from './Lobby';
 import { useMembership } from './membership';
 import { OfflineGame } from './OfflineGame';
 import { useOfflineQueue } from './offlineQueue';
 import { RoomForm, type EntryMode } from './RoomForm';
-import { Header, Help, loadPreferences, Modal, type Preferences } from './ui';
+import { Header, Help, loadPreferences, Modal, PreferencesPanel, type Preferences } from './ui';
 
-type Overlay = EntryMode | 'help' | 'profile' | 'leave';
+type Overlay = EntryMode | 'help' | 'profile' | 'leave' | 'settings' | 'private-room' | 'watch';
 type SoloRun = { key: number; mode: RoundMode; challenge?: SoloChallengeTicket; accountId?: string };
 const DailyPage = lazy(() => import('./Daily').then((module) => ({ default: module.DailyPage })));
 const AccountPanel = lazy(() => import('./Member').then((module) => ({ default: module.AccountPanel })));
@@ -79,17 +79,21 @@ export function App() {
     else navigate('/');
   }
 
-  function open(mode: EntryMode | 'help' | 'offline' | 'daily') {
+  function open(mode: LandingAction) {
     if (mode === 'daily') {
       navigate('/gunluk');
       return;
     }
-    if (mode === 'offline') {
+    if (mode === 'quick') {
       setSoloRun(null);
       navigate('/cevrimdisi');
       return;
     }
-    if (room && mode !== 'help') {
+    if (mode === 'leaderboard') {
+      openLeaderboard();
+      return;
+    }
+    if (room && mode === 'private-room') {
       navigate(`/room/${room.code}`);
       return;
     }
@@ -143,12 +147,11 @@ export function App() {
     <>
       <Header
         home={home}
-        help={() => setOverlay('help')}
         profile={openAccount}
         accountName={profile?.username}
+        accountRating={profile?.rating}
         leaderboard={openLeaderboard}
-        preferences={preferences}
-        setPreferences={setPreferences}
+        openSettings={() => setOverlay('settings')}
       />
       <Routes>
         <Route
@@ -187,7 +190,7 @@ export function App() {
                   <span className="result-icon">
                     <WifiOff size={22} aria-hidden="true" />
                   </span>
-                  <h1>Çevrimdışı oyna</h1>
+                  <h1>Hızlı Oyna</h1>
                   <p>Tek kelime, beş tahmin hakkı.</p>
                   <div className="solo-mode-actions">
                     <button className="button button-primary" onClick={() => startSolo('timed')}>
@@ -303,26 +306,46 @@ export function App() {
               accountActionsEnabled={!room && !recovering && !hasRoomTicket()}
             />
           </Suspense>
-          <label className="preferences-control">
-            <div>
-              <strong>Harf işaretleri</strong>
-              <p>Tahmin sonuçlarını renklerle birlikte simgelerle göster.</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={preferences.symbols}
-              onChange={(event) => setPreferences({ ...preferences, symbols: event.target.checked })}
-            />
-          </label>
         </Modal>
       )}
-      {(overlay === 'create' || overlay === 'join') && (
+      {overlay === 'settings' && (
+        <Modal title="Ayarlar" onClose={() => setOverlay(undefined)}>
+          <PreferencesPanel
+            preferences={preferences}
+            setPreferences={setPreferences}
+            help={() => setOverlay('help')}
+          />
+        </Modal>
+      )}
+      {overlay === 'private-room' && (
+        <Modal title="Özel Oda" onClose={() => setOverlay(undefined)}>
+          <div className="private-room-options">
+            <button type="button" className="button button-primary" onClick={() => setOverlay('create')}>
+              <Plus size={18} aria-hidden="true" /> Oda oluştur
+            </button>
+            <button type="button" className="button button-secondary" onClick={() => setOverlay('join')}>
+              <DoorOpen size={18} aria-hidden="true" /> Odaya katıl
+            </button>
+            <button type="button" className="button button-secondary" onClick={() => setOverlay('watch')}>
+              <Eye size={18} aria-hidden="true" /> İzleyici olarak katıl
+            </button>
+          </div>
+        </Modal>
+      )}
+      {(overlay === 'create' || overlay === 'join' || overlay === 'watch') && (
         <Modal
-          title={overlay === 'create' ? 'Oda oluştur' : 'Odaya katıl'}
+          title={overlay === 'create' ? 'Oda oluştur' : overlay === 'watch' ? 'Odayı izle' : 'Odaya katıl'}
           onClose={() => setOverlay(undefined)}
         >
           {!connected && <ConnectionNotice message="Sunucuya bağlanılıyor…" />}
-          <RoomForm mode={overlay} accountName={profile?.username} enabled={enabled} entered={enter} />
+          <RoomForm
+            key={overlay}
+            mode={overlay === 'create' ? 'create' : 'join'}
+            watchOnly={overlay === 'watch'}
+            accountName={profile?.username}
+            enabled={enabled}
+            entered={enter}
+          />
         </Modal>
       )}
       {overlay === 'leave' && (

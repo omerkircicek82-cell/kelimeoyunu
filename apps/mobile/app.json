@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "Kelime Arenası",
+    "name": "HarfArena",
     "slug": "kelime-arenasi",
     "version": "1.0.0",
     "platforms": ["android"],
     "scheme": "kelimearenasi",
     "orientation": "portrait",
-    "backgroundColor": "#101021",
+    "backgroundColor": "#07162D",
     "icon": "./assets/icon.png",
     "android": {
       "package": "com.kelimearenasi.oyun",
       "versionCode": 1,
       "allowBackup": false,
       "adaptiveIcon": {
-        "backgroundColor": "#101021",
+        "backgroundColor": "#07162D",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
       "blockedPermissions": [
@@ -28,7 +28,7 @@
         {
           "image": "./assets/splash.png",
           "imageWidth": 192,
-          "backgroundColor": "#101021"
+          "backgroundColor": "#07162D"
         }
       ],
       "expo-secure-store"

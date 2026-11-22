@@ -6,6 +6,7 @@
 }
 .daily-heading h1 {
   font-size: clamp(25px, 5vw, 41px);
+  font-family: var(--arena-display);
   font-weight: 875;
   letter-spacing: -0.045em;
 }
@@ -52,7 +53,7 @@
 }
 .daily-own-rank small {
   margin-left: 4px;
-  color: var(--arena-purple);
+  color: var(--arena-accent);
 }
 .daily-answers {
   width: 100%;

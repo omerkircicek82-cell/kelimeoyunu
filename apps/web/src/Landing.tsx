@@ -4,19 +4,18 @@ import {
   CalendarDays,
   Check,
   CircleHelp,
-  DoorOpen,
+  KeyRound,
   Minus,
-  Plus,
+  Play,
   RotateCcw,
-  UsersRound,
-  WifiOff,
+  Trophy,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { evaluateGuess } from '@arena/game-engine';
 import { MAX_ATTEMPTS, WORD_LENGTH } from '@arena/shared';
 import './landing.css';
 
-type Mode = 'create' | 'join' | 'offline' | 'daily' | 'help';
+export type LandingAction = 'quick' | 'private-room' | 'daily' | 'leaderboard' | 'help';
 
 const exampleKey = 'arena-landing-example';
 const examples = [
@@ -113,66 +112,55 @@ function ExampleBoard() {
   );
 }
 
-export function Landing({ open }: { open: (mode: Mode) => void }) {
-  return (
-    <main className="arena-landing">
-      <div className="arena-landing__content">
-        <div className="arena-landing__capacity">
-          <UsersRound size={16} aria-hidden="true" />
-          2–8 oyuncu
-        </div>
-        <h1>
-          KELİME
-          <span>ARENASI</span>
-        </h1>
-        <p className="arena-landing__tagline">
-          Kelimeleri çöz, zamana karşı yarış, arkadaşlarını geride bırak!
-        </p>
-        <p className="arena-landing__description">
-          Arkadaşlarınla süreli veya süresiz turlarda yarış. Tek başına çevrimdışı oynayarak beş harfli
-          kelimeleri de çözebilirsin.
-        </p>
+const mainActions = [
+  { id: 'quick', label: 'Hızlı Oyna', icon: Play },
+  { id: 'private-room', label: 'Özel Oda', icon: KeyRound },
+  { id: 'daily', label: 'Günlük Mücadele', icon: CalendarDays },
+  { id: 'leaderboard', label: 'Liderlik', icon: Trophy },
+] as const;
 
-        <div className="arena-landing__actions">
-          <button
-            type="button"
-            className="arena-landing__button arena-landing__button--primary"
-            onClick={() => open('create')}
-          >
-            <Plus size={19} aria-hidden="true" />
-            Oda oluştur
-            <ArrowRight className="arena-landing__action-arrow" size={18} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="arena-landing__button arena-landing__button--secondary"
-            onClick={() => open('join')}
-          >
-            <DoorOpen size={18} aria-hidden="true" />
-            Odaya katıl
-          </button>
-          <button
-            type="button"
-            className="arena-landing__button arena-landing__button--offline"
-            onClick={() => open('offline')}
-          >
-            <WifiOff size={18} aria-hidden="true" />
-            Çevrimdışı oyna
-          </button>
-          <button
-            type="button"
-            className="arena-landing__button arena-landing__button--secondary"
-            onClick={() => open('daily')}
-          >
-            <CalendarDays size={18} aria-hidden="true" />
-            Günlük mücadele
+export function Landing({ open }: { open: (mode: LandingAction) => void }) {
+  const [showCrest, setShowCrest] = useState(true);
+
+  return (
+    <main className="arena-home">
+      <section className="arena-landing" aria-labelledby="arena-home-title">
+        <div className="arena-landing__content">
+          <h1 id="arena-home-title" className="arena-landing__crest">
+            {showCrest ? (
+              <img
+                src="/harfarena-crest.webp"
+                alt="HarfArena"
+                width={1446}
+                height={1086}
+                fetchPriority="high"
+                onError={() => setShowCrest(false)}
+              />
+            ) : (
+              <span>HarfArena</span>
+            )}
+          </h1>
+          <nav className="arena-landing__actions" aria-label="Oyun menüsü">
+            {mainActions.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                className={`arena-landing__button arena-landing__button--${id}`}
+                onClick={() => open(id)}
+              >
+                <span className="arena-landing__action-icon">
+                  <Icon size={23} aria-hidden="true" />
+                </span>
+                <span>{label}</span>
+                <ArrowRight className="arena-landing__arrow" size={19} aria-hidden="true" />
+              </button>
+            ))}
+          </nav>
+          <button type="button" className="arena-landing__help" onClick={() => open('help')}>
+            <CircleHelp size={17} aria-hidden="true" /> Nasıl oynanır?
           </button>
         </div>
-        <button type="button" className="arena-landing__help" onClick={() => open('help')}>
-          <CircleHelp size={17} aria-hidden="true" />
-          Nasıl oynanır?
-        </button>
-      </div>
+      </section>
       <div className="arena-landing__example">
         <ExampleBoard />
       </div>

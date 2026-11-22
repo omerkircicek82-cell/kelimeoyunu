@@ -1,4 +1,4 @@
-# Kelime Arenası Android
+# HarfArena Android
 
 Android uygulaması, oyunun mevcut NestJS ve PostgreSQL sunucusuna Socket.IO üzerinden bağlanır. Web ve Android oyuncuları aynı oda koduyla birlikte oynayabilir.
 
@@ -44,7 +44,7 @@ $env:EXPO_PUBLIC_ARENA_URL = "http://10.0.2.2:8080"
 npm.cmd start -- --android --localhost --clear --port 8082
 ```
 
-Sağlık adresi cevap veriyor ve uygulamada bağlantı kurulamadı mesajı görünüyorsa, emülatör Chrome'da `http://10.0.2.2:8080/socket.io/?EIO=4&transport=polling` adresini açın. Başarılı yanıt `0{"sid":...` ile başlar. Expo terminalindeki `[Kelime Arenası] Socket.IO bağlantısı` satırı mobil bağlantı hatasının ayrıntısını gösterir.
+Sağlık adresi cevap veriyor ve uygulamada bağlantı kurulamadı mesajı görünüyorsa, emülatör Chrome'da `http://10.0.2.2:8080/socket.io/?EIO=4&transport=polling` adresini açın. Başarılı yanıt `0{"sid":...` ile başlar. Expo terminalindeki `[HarfArena] Socket.IO bağlantısı` satırı mobil bağlantı hatasının ayrıntısını gösterir.
 
 ## Android paketleri
 

@@ -112,7 +112,7 @@ export function useArenaConnection(serverUrl: string, accessToken?: string, acco
     function connectFailed(error: Error & { description?: unknown; data?: unknown }) {
       if (__DEV__) {
         const status = typeof error.description === "number" ? ` (HTTP ${error.description})` : "";
-        console.info(`[Kelime Arenası] Socket.IO bağlantısı: ${serverUrl} — ${error.message}${status}`);
+        console.info(`[HarfArena] Socket.IO bağlantısı: ${serverUrl} — ${error.message}${status}`);
       }
       setState(value => ({ ...value, online: false, recovering: Boolean(ticket.current),
         error: error.data === "ACCOUNT_SESSION" ? error.message : "Oyun bağlantısı kurulamadı. Yeniden deneniyor." }));

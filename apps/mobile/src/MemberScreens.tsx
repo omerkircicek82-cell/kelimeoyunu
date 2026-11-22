@@ -1,20 +1,32 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  BADGE_DETAILS, LEAGUES, LEAGUE_DETAILS, RATING_GREEN_POINTS, RATING_ROUND_POINTS, RATING_YELLOW_POINTS,
-  type AccountProfile, type LeaderboardEntry, type LeagueId,
+  BADGE_DETAILS,
+  LEAGUES,
+  LEAGUE_DETAILS,
+  RATING_GREEN_POINTS,
+  RATING_ROUND_POINTS,
+  RATING_YELLOW_POINTS,
+  type AccountProfile,
+  type LeaderboardEntry,
+  type LeagueId,
 } from '@arena/shared';
+import { useMarkSymbols } from '../services/useMarkSymbols';
+import { ArenaBackdrop, arenaCrest } from './ArenaArt';
 import { baseStyles as base, colors } from './Theme';
 
 export type { AccountProfile, LeaderboardEntry } from '@arena/shared';
@@ -26,11 +38,18 @@ const numbers = new Intl.NumberFormat('tr-TR');
 function Screen({ children, goBack }: { children: ReactNode; goBack?: () => void }) {
   return (
     <SafeAreaView style={styles.screen}>
+      <ArenaBackdrop muted />
       {goBack && (
         <View style={styles.topBar}>
           <Pressable accessibilityRole="button" onPress={goBack} style={styles.back}>
             <Text style={styles.backText}>‹ Arena</Text>
           </Pressable>
+          <Image
+            source={arenaCrest}
+            resizeMode="contain"
+            style={styles.headerCrest}
+            accessibilityIgnoresInvertColors
+          />
         </View>
       )}
       <KeyboardAvoidingView
@@ -69,7 +88,7 @@ function Button({
         disabled && styles.disabled,
       ]}
     >
-      <Text style={[base.label, primary && styles.onLime]}>{label}</Text>
+      <Text style={[base.label, primary && styles.onGold]}>{label}</Text>
     </Pressable>
   );
 }
@@ -86,53 +105,176 @@ export function NativeModeHome({
   openOnline,
   openOffline,
   openDaily,
+  openLeaderboard,
+  openProfile,
+  openSettings,
+  account,
+  pending,
+  notice,
 }: {
   openOnline: () => void;
   openOffline: () => void;
   openDaily: () => void;
+  openLeaderboard: () => void;
+  openProfile: () => void;
+  openSettings: () => void;
+  account?: AccountProfile;
+  pending: number;
+  notice?: string;
 }) {
+  const { height, width } = useWindowDimensions();
+  const crestHeight = Math.min(206, height * 0.23, width * 0.51);
+  const profileTitle = account?.progression?.title;
+  const buttons = [
+    {
+      title: 'Hızlı Oyna',
+      detail: 'Tek başına kelime çöz',
+      tone: 'gold',
+      icon: 'play',
+      onPress: openOffline,
+    },
+    {
+      title: 'Özel Oda',
+      detail: 'Oda kur, katıl veya izle',
+      tone: 'teal',
+      icon: 'lock',
+      onPress: openOnline,
+    },
+    {
+      title: 'Günlük Mücadele',
+      detail: 'Günün kelimelerini çöz',
+      tone: 'plum',
+      icon: 'daily',
+      onPress: openDaily,
+    },
+    {
+      title: 'Liderlik',
+      detail: 'Genel sıralamayı gör',
+      tone: 'navy',
+      icon: 'ranks',
+      onPress: openLeaderboard,
+    },
+  ] as const;
+
   return (
-    <Screen>
-      <View style={styles.hero}>
-        <View style={styles.wordGrid} importantForAccessibility="no-hide-descendants">
-          {Array.from('ARENA').map((letter, index) => (
-            <View key={index} style={[styles.letter, index >= 2 && styles.markedLetter]}>
-              <Text style={[styles.letterText, index >= 2 && styles.markedLetterText]}>
-                {letter}
+    <SafeAreaView style={styles.screen}>
+      <ArenaBackdrop />
+      <ScrollView contentContainerStyle={styles.homeContent}>
+        {account ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Profil"
+            onPress={openProfile}
+            style={styles.accountStrip}
+          >
+            <View style={styles.avatarMedallion} importantForAccessibility="no">
+              <Text style={styles.avatarLetter}>
+                {account.username.slice(0, 1).toLocaleUpperCase('tr-TR')}
               </Text>
             </View>
+            <View style={styles.modeText}>
+              <Text numberOfLines={1} style={base.label}>
+                {account.username}
+              </Text>
+              {profileTitle && (
+                <Text numberOfLines={1} style={base.caption}>
+                  {profileTitle}
+                </Text>
+              )}
+            </View>
+            <View style={styles.accountRating}>
+              <Text style={styles.accountScore}>{numbers.format(account.rating)}</Text>
+              <Text style={base.caption}>Derece puanı</Text>
+            </View>
+          </Pressable>
+        ) : (
+          <View style={styles.guestBadge}>
+            <Text style={base.caption}>Misafir</Text>
+          </View>
+        )}
+        <Image
+          accessibilityRole="image"
+          accessibilityLabel="HarfArena"
+          accessibilityIgnoresInvertColors
+          resizeMode="contain"
+          source={arenaCrest}
+          style={[styles.homeCrest, { height: crestHeight }]}
+        />
+        <View style={styles.modeStack}>
+          {buttons.map((button) => (
+            <ModeCard key={button.title} {...button} />
           ))}
         </View>
-        <Text accessibilityRole="header" style={styles.heroTitle}>
-          KELİME{'\n'}
-          <Text style={styles.emphasis}>ARENASI</Text>
+        {pending > 0 && (
+          <Text style={[base.caption, styles.homeNotice]}>
+            {pending} sonuç eşitlenmeyi bekliyor
+          </Text>
+        )}
+        {!!notice && <Notice message={notice} />}
+        <View style={styles.homeFooter}>
+          <Button label={account ? 'Profil' : 'Giriş / Kayıt'} onPress={openProfile} />
+          <Button label="Ayarlar" onPress={openSettings} />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+export function MemberSettings({
+  serverUrl,
+  goBack,
+  changeServer,
+}: {
+  serverUrl: string | null;
+  goBack: () => void;
+  changeServer?: () => void;
+}) {
+  const { showMarkSymbols, saveMarkSymbols, preferenceError } = useMarkSymbols();
+  return (
+    <Screen goBack={goBack}>
+      <Text accessibilityRole="header" style={base.title}>
+        Ayarlar
+      </Text>
+      <View style={[base.card, base.section]}>
+        <Text accessibilityRole="header" style={base.subtitle}>
+          Oyun görünümü
         </Text>
-        <Text style={base.body}>Nasıl oynamak istersin?</Text>
+        <View style={styles.scoreRow}>
+          <View style={styles.modeText}>
+            <Text style={base.label}>Harf işaretleri</Text>
+            <Text style={base.caption}>
+              Tahmin kutularında renklerin yanında ✓, ↗ ve − işaretlerini göster.
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Harf işaretleri"
+            value={showMarkSymbols}
+            onValueChange={saveMarkSymbols}
+            trackColor={{ false: colors.line, true: colors.correct }}
+            thumbColor={showMarkSymbols ? colors.gold : colors.muted}
+          />
+        </View>
+        {!!preferenceError && <Notice message={preferenceError} />}
       </View>
-      <ModeCard
-        title="Online"
-        detail="Arkadaşlarınla aynı odada yarış veya dereceli sıralamaya katıl."
-        symbol="↗"
-        onPress={openOnline}
-        primary
-      />
-      <ModeCard
-        title="Günlük mücadele"
-        detail="Günün beş kelimesini çöz ve bugünün sıralamasına katıl."
-        symbol="◆"
-        onPress={openDaily}
-      />
-      <ModeCard
-        title="Çevrimdışı"
-        detail="Kelimeleri tek başına ve kendi hızında bul."
-        symbol="▦"
-        onPress={openOffline}
-      />
+      <View style={[base.card, base.section]}>
+        <Text accessibilityRole="header" style={base.subtitle}>
+          Oyun sunucusu
+        </Text>
+        <Text selectable style={base.body}>
+          {serverUrl ?? 'Henüz bağlantı adresi eklenmedi.'}
+        </Text>
+        {changeServer && <Button label="Sunucu adresini değiştir" onPress={changeServer} />}
+      </View>
     </Screen>
   );
 }
 
-export function MemberProfile({ account, goBack, onLogout, openLeaderboard }: {
+export function MemberProfile({
+  account,
+  goBack,
+  onLogout,
+  openLeaderboard,
+}: {
   account: AccountProfile;
   goBack: () => void;
   onLogout: () => Promise<void>;
@@ -158,14 +300,18 @@ export function MemberProfile({ account, goBack, onLogout, openLeaderboard }: {
   return (
     <Screen goBack={goBack}>
       <View style={base.sectionTitle}>
-        <Text accessibilityRole="header" style={base.title}>{account.username}</Text>
+        <Text accessibilityRole="header" style={base.title}>
+          {account.username}
+        </Text>
         {progress && <Text style={base.subtitle}>{progress.title}</Text>}
       </View>
       <View style={[base.card, base.section]}>
         <View style={styles.scoreRow}>
           <View style={styles.modeText}>
             <Text style={base.caption}>Arena ligi</Text>
-            <Text style={base.subtitle}>{progress ? LEAGUE_DETAILS[progress.league].label : 'Lig bilgisi alınamadı'}</Text>
+            <Text style={base.subtitle}>
+              {progress ? LEAGUE_DETAILS[progress.league].label : 'Lig bilgisi alınamadı'}
+            </Text>
             <Text style={base.caption}>{numbers.format(account.ratedGames)} dereceli tur</Text>
           </View>
           <View style={styles.ratingBadge}>
@@ -176,7 +322,8 @@ export function MemberProfile({ account, goBack, onLogout, openLeaderboard }: {
         {Object.entries(LEAGUE_DETAILS).map(([id, { label, minRating }]) => (
           <View key={id} style={[styles.scoreRow, styles.progressRow]}>
             <Text style={[base.label, styles.modeText, progress?.league === id && styles.emphasis]}>
-              {label}{progress?.league === id ? ' · Senin ligin' : ''}
+              {label}
+              {progress?.league === id ? ' · Senin ligin' : ''}
             </Text>
             <Text style={base.caption}>{numbers.format(minRating)} puan</Text>
           </View>
@@ -186,27 +333,37 @@ export function MemberProfile({ account, goBack, onLogout, openLeaderboard }: {
       {progress && (
         <>
           <View style={[base.card, base.section]}>
-            <Text accessibilityRole="header" style={base.subtitle}>Galibiyet serisi</Text>
+            <Text accessibilityRole="header" style={base.subtitle}>
+              Galibiyet serisi
+            </Text>
             <Text style={base.caption}>Art arda çözdüğün dereceli turlar.</Text>
             <View style={styles.progressMetrics}>
               <ProgressMetric label="Güncel" value={progress.winStreak} />
               <ProgressMetric label="En uzun" value={progress.bestWinStreak} />
               <ProgressMetric label="Galibiyet" value={progress.wins} />
             </View>
-            <Text style={base.caption}>En yüksek derece puanın {numbers.format(progress.peakRating)}.</Text>
+            <Text style={base.caption}>
+              En yüksek derece puanın {numbers.format(progress.peakRating)}.
+            </Text>
           </View>
           <View style={[base.card, base.section]}>
-            <Text accessibilityRole="header" style={base.subtitle}>Rozetler</Text>
-            <Text style={base.caption}>{progress.badges.length} / {Object.keys(BADGE_DETAILS).length} kazanıldı</Text>
+            <Text accessibilityRole="header" style={base.subtitle}>
+              Rozetler
+            </Text>
+            <Text style={base.caption}>
+              {progress.badges.length} / {Object.keys(BADGE_DETAILS).length} kazanıldı
+            </Text>
             {Object.entries(BADGE_DETAILS).map(([id, badge]) => {
-              const acquired = progress.badges.some(earned => earned === id);
+              const acquired = progress.badges.some((earned) => earned === id);
               return (
                 <View key={id} style={[styles.scoreRow, styles.progressRow]}>
                   <View style={styles.modeText}>
                     <Text style={base.label}>{badge.label}</Text>
                     <Text style={base.caption}>{badge.description}</Text>
                   </View>
-                  <Text style={[base.caption, acquired && styles.emphasis]}>{acquired ? 'Kazanıldı' : 'Kilitli'}</Text>
+                  <Text style={[base.caption, acquired && styles.emphasis]}>
+                    {acquired ? 'Kazanıldı' : 'Kilitli'}
+                  </Text>
                 </View>
               );
             })}
@@ -214,7 +371,11 @@ export function MemberProfile({ account, goBack, onLogout, openLeaderboard }: {
         </>
       )}
       {error ? <Notice message={error} /> : null}
-      <Button label={busy ? 'Çıkılıyor…' : 'Hesaptan çık'} disabled={busy} onPress={() => void logout()} />
+      <Button
+        label={busy ? 'Çıkılıyor…' : 'Hesaptan çık'}
+        disabled={busy}
+        onPress={() => void logout()}
+      />
     </Screen>
   );
 }
@@ -228,40 +389,65 @@ function ProgressMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
+type ModeTone = 'gold' | 'teal' | 'plum' | 'navy';
+type ModeIcon = 'play' | 'lock' | 'daily' | 'ranks';
+
 function ModeCard({
   title,
   detail,
-  symbol,
+  tone,
+  icon,
   onPress,
-  primary = false,
 }: {
   title: string;
   detail: string;
-  symbol: string;
+  tone: ModeTone;
+  icon: ModeIcon;
   onPress: () => void;
-  primary?: boolean;
 }) {
+  const primary = tone === 'gold';
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityHint={detail}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.modeCard,
-        primary && styles.primary,
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [styles.modeCard, modeTones[tone], pressed && styles.pressed]}
     >
-      <View style={[styles.modeIcon, primary && styles.primaryIcon]} importantForAccessibility="no">
-        <Text style={[styles.modeSymbol, primary && styles.onLime]}>{symbol}</Text>
+      <View style={styles.modeSheen} pointerEvents="none" />
+      <View
+        style={[styles.modeIcon, primary && styles.primaryIcon]}
+        importantForAccessibility="no-hide-descendants"
+      >
+        <ModeSymbol icon={icon} primary={primary} />
       </View>
       <View style={styles.modeText}>
-        <Text style={[base.subtitle, primary && styles.onLime]}>{title}</Text>
+        <Text style={[styles.modeTitle, primary && styles.onGold]}>{title}</Text>
         <Text style={[base.caption, primary && styles.primaryDetail]}>{detail}</Text>
       </View>
-      <Text style={[styles.modeArrow, primary && styles.onLime]}>›</Text>
+      <Text style={[styles.modeArrow, primary && styles.onGold]}>›</Text>
     </Pressable>
+  );
+}
+
+function ModeSymbol({ icon, primary }: { icon: ModeIcon; primary: boolean }) {
+  const paint = primary ? colors.goldInk : colors.gold;
+  if (icon === 'play') return <View style={[styles.playTriangle, { borderLeftColor: paint }]} />;
+  if (icon === 'lock') {
+    return (
+      <View style={styles.lockIcon}>
+        <View style={[styles.lockArch, { borderColor: paint }]} />
+        <View style={[styles.lockBody, { backgroundColor: paint }]} />
+      </View>
+    );
+  }
+  if (icon === 'daily') return <Text style={[styles.modeStar, { color: paint }]}>✦</Text>;
+  return (
+    <View style={styles.podiumIcon}>
+      {[8, 16, 11].map((height) => (
+        <View key={height} style={{ width: 5, height, backgroundColor: paint }} />
+      ))}
+    </View>
   );
 }
 
@@ -469,8 +655,8 @@ export function MemberLeaderboard({
         </Text>
         <Text style={base.body}>Online ve çevrimdışı genel puana göre Arena sıralaması.</Text>
         <Text style={base.caption}>
-          Çözüm +{RATING_ROUND_POINTS}, çözülemeyen tur −{RATING_ROUND_POINTS}.
-          En iyi satırda yeşil harf +{RATING_GREEN_POINTS}, sarı harf +{RATING_YELLOW_POINTS}.
+          Çözüm +{RATING_ROUND_POINTS}, çözülemeyen tur −{RATING_ROUND_POINTS}. En iyi satırda yeşil
+          harf +{RATING_GREEN_POINTS}, sarı harf +{RATING_YELLOW_POINTS}.
         </Text>
       </View>
       {account ? (
@@ -509,7 +695,7 @@ export function MemberLeaderboard({
           />
         </View>
         <View style={styles.leagueFilters} accessibilityRole="tablist">
-          {([undefined, ...LEAGUES] as const).map(id => (
+          {([undefined, ...LEAGUES] as const).map((id) => (
             <Pressable
               key={id ?? 'all'}
               style={[styles.leagueFilter, league === id && styles.activeTab]}
@@ -528,7 +714,7 @@ export function MemberLeaderboard({
           ))}
         </View>
         {board.loading && (
-          <ActivityIndicator color={colors.lime} accessibilityLabel="Sıralama yükleniyor" />
+          <ActivityIndicator color={colors.gold} accessibilityLabel="Sıralama yükleniyor" />
         )}
         {board.error ? <Notice message={board.error} /> : null}
         {!board.loading && board.entries?.length === 0 && (
@@ -580,10 +766,13 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.line,
     minHeight: 50,
     paddingHorizontal: 16,
-    justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexDirection: 'row',
   },
+  headerCrest: { width: 80, height: 46 },
   back: { minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingRight: 12 },
-  backText: { color: colors.violet, fontSize: 14, fontWeight: '800' },
+  backText: { color: colors.tealLight, fontSize: 14, fontWeight: '800' },
   button: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -595,61 +784,113 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  primary: { backgroundColor: colors.lime, borderColor: colors.lime },
-  onLime: { color: colors.background },
-  primaryDetail: { color: colors.limeDetail },
+  primary: { backgroundColor: colors.gold, borderColor: colors.gold },
+  onGold: { color: colors.background },
+  primaryDetail: { color: colors.goldInk },
   pressed: { opacity: 0.76 },
   disabled: { opacity: 0.48 },
-  hero: {
-    backgroundColor: colors.heroPanel,
+  homeContent: {
+    flexGrow: 1,
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    padding: 16,
+    paddingVertical: 10,
+    gap: 10,
+    justifyContent: 'center',
+  },
+  accountStrip: {
+    minHeight: 50,
+    borderColor: colors.heroLine,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 7,
+    paddingHorizontal: 10,
+    backgroundColor: '#0a1e2ceb',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 9,
+  },
+  avatarMedallion: {
+    width: 35,
+    height: 35,
+    borderRadius: 18,
+    borderColor: colors.heroLine,
+    borderWidth: 1,
+    backgroundColor: colors.tealSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLetter: { color: colors.gold, fontFamily: 'serif', fontWeight: '800', fontSize: 18 },
+  accountRating: { alignItems: 'flex-end' },
+  accountScore: {
+    color: colors.gold,
+    fontSize: 18,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  guestBadge: {
+    alignSelf: 'center',
+    backgroundColor: '#0a1e2ce8',
     borderWidth: 1,
     borderColor: colors.heroLine,
-    borderRadius: 22,
-    padding: 20,
-    gap: 12,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
-  heroTitle: {
-    color: colors.ink,
-    fontSize: 44,
-    lineHeight: 46,
-    fontWeight: '900',
-    letterSpacing: -1.8,
-  },
-  emphasis: { color: colors.lime },
-  wordGrid: { flexDirection: 'row', gap: 4 },
-  letter: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 28,
-    width: 28,
-    borderRadius: 6,
-    backgroundColor: colors.violetSoft,
-  },
-  markedLetter: { backgroundColor: colors.correct },
-  letterText: { color: colors.violet, fontWeight: '900', fontSize: 13 },
-  markedLetterText: { color: colors.lime },
+  homeCrest: { alignSelf: 'center', width: '91%', maxWidth: 340 },
+  modeStack: { gap: 8 },
   modeCard: {
     backgroundColor: colors.panel,
-    borderColor: colors.line,
+    borderColor: colors.heroLine,
+    borderBottomWidth: 3,
     borderWidth: 1,
-    borderRadius: 17,
-    padding: 12,
-    gap: 10,
-    minHeight: 78,
+    borderRadius: 12,
+    padding: 9,
+    gap: 11,
+    minHeight: 61,
     flexDirection: 'row',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  modeSheen: {
+    position: 'absolute',
+    top: 1,
+    left: 4,
+    right: 4,
+    borderRadius: 5,
+    height: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.065)',
   },
   modeIcon: {
-    width: 43,
-    height: 43,
-    borderRadius: 11,
-    backgroundColor: colors.violetSoft,
+    width: 38,
+    height: 38,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#cfaa60ad',
+    backgroundColor: '#07192980',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryIcon: { backgroundColor: colors.limeInset },
-  modeSymbol: { color: colors.violet, fontSize: 22, fontWeight: '900' },
-  modeArrow: { color: colors.muted, fontSize: 24 },
+  primaryIcon: { backgroundColor: '#fbd889', borderColor: '#956220' },
+  modeTitle: { color: colors.ink, fontFamily: 'serif', fontSize: 21, fontWeight: '800' },
+  modeArrow: { color: colors.gold, fontSize: 28, paddingHorizontal: 3 },
+  modeStar: { fontSize: 25, fontWeight: '800' },
+  playTriangle: {
+    marginLeft: 3,
+    borderLeftWidth: 14,
+    borderTopWidth: 8,
+    borderBottomWidth: 8,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+  },
+  lockIcon: { alignItems: 'center' },
+  lockArch: { width: 11, height: 9, borderWidth: 2, borderRadius: 6 },
+  lockBody: { width: 15, height: 10, marginTop: -3, borderRadius: 2 },
+  podiumIcon: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, minHeight: 17 },
+  homeNotice: { textAlign: 'center' },
+  homeFooter: { flexDirection: 'row', justifyContent: 'center', gap: 9 },
+  emphasis: { color: colors.gold },
   modeText: { flex: 1, minWidth: 0, gap: 3 },
   field: { gap: 6 },
   input: {
@@ -674,21 +915,28 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   tab: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
-  activeTab: { backgroundColor: colors.violetSoft },
+  activeTab: { backgroundColor: colors.tealSoft },
   notice: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   progressRow: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10 },
   progressMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  metric: { flex: 1, minWidth: 66, alignItems: 'center', padding: 8, borderRadius: 9, backgroundColor: colors.violetSoft },
+  metric: {
+    flex: 1,
+    minWidth: 66,
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 9,
+    backgroundColor: colors.tealSoft,
+  },
   ratingBadge: {
-    backgroundColor: colors.violetSoft,
+    backgroundColor: colors.tealSoft,
     borderRadius: 10,
     padding: 8,
     alignItems: 'center',
   },
   ratingValue: {
     fontSize: 20,
-    color: colors.lime,
+    color: colors.gold,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
@@ -701,11 +949,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 6,
   },
-  myRank: { backgroundColor: colors.violetSoft, borderRadius: 9, borderTopColor: 'transparent' },
+  myRank: { backgroundColor: colors.tealSoft, borderRadius: 9, borderTopColor: 'transparent' },
   rank: {
     minWidth: 26,
     textAlign: 'center',
-    color: colors.violet,
+    color: colors.tealLight,
     fontSize: 14,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
@@ -716,6 +964,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
+});
+
+const modeTones = StyleSheet.create({
+  gold: { backgroundColor: '#ecc268', borderColor: '#9a6427', borderTopColor: '#ffe4a3' },
+  teal: { backgroundColor: '#17484f', borderColor: '#986c38', borderTopColor: '#a0d1b3' },
+  plum: { backgroundColor: '#38294a', borderColor: '#927044', borderTopColor: '#aa9abc' },
+  navy: { backgroundColor: '#1a3e67', borderColor: '#977340', borderTopColor: '#779ccb' },
 });
 
 export { Screen as MemberScreen, Button as MemberButton, Notice as MemberNotice };

@@ -1,6 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { MAX_ATTEMPTS, ROUND_COUNT, WORD_LENGTH, type DailyRoundView, type DailyState, type Mark } from '@arena/shared';
+import {
+  ActivityIndicator,
+  AppState,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import {
+  MAX_ATTEMPTS,
+  ROUND_COUNT,
+  WORD_LENGTH,
+  type DailyRoundView,
+  type DailyState,
+  type Mark,
+} from '@arena/shared';
+import { useMarkSymbols } from '../services/useMarkSymbols';
 import { RequestError } from '../services/useMembership';
 import { MemberButton, MemberNotice, MemberScreen } from './MemberScreens';
 import { baseStyles as base, colors } from './Theme';
@@ -8,7 +24,11 @@ import { baseStyles as base, colors } from './Theme';
 const numbers = new Intl.NumberFormat('tr-TR');
 const rows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ', 'ÂÎÛ'];
 const strength: Record<Mark, number> = { absent: 0, present: 1, correct: 2 };
-const markLabels: Record<Mark, string> = { absent: 'Kelimede yok', present: 'Yeri farklı', correct: 'Doğru yerde' };
+const markLabels: Record<Mark, string> = {
+  absent: 'Kelimede yok',
+  present: 'Yeri farklı',
+  correct: 'Doğru yerde',
+};
 const markSymbols: Record<Mark, string> = { absent: '−', present: '↗', correct: '✓' };
 let requestSequence = 0;
 
@@ -20,8 +40,14 @@ type DailyOperations = {
 };
 
 export function DailyScreen({
-  operations, username, goBack,
-}: { operations: DailyOperations; username: string; goBack: () => void }) {
+  operations,
+  username,
+  goBack,
+}: {
+  operations: DailyOperations;
+  username: string;
+  goBack: () => void;
+}) {
   const [state, setState] = useState<DailyState>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -60,7 +86,7 @@ export function DailyScreen({
   useEffect(() => {
     active.current = true;
     void run(() => current.current.load());
-    const listener = AppState.addEventListener('change', value => {
+    const listener = AppState.addEventListener('change', (value) => {
       if (value === 'active') void run(() => current.current.load());
     });
     return () => {
@@ -75,27 +101,47 @@ export function DailyScreen({
   return (
     <MemberScreen goBack={goBack}>
       <View style={base.sectionTitle}>
-        <Text accessibilityRole="header" style={base.title}>Günlük mücadele</Text>
-        <Text style={base.body}>
-          Herkes günün aynı {ROUND_COUNT} kelimesini çözer. Kelime başına {MAX_ATTEMPTS} tahmin, süre sınırı yok.
+        <Text accessibilityRole="header" style={base.title}>
+          Günlük mücadele
         </Text>
-        {state && <Text style={base.caption}>{state.date.split('-').reverse().join('.')} · Türkiye saati</Text>}
+        <Text style={base.body}>
+          Herkes günün aynı {ROUND_COUNT} kelimesini çözer. Kelime başına {MAX_ATTEMPTS} tahmin,
+          süre sınırı yok.
+        </Text>
+        {state && (
+          <Text style={base.caption}>
+            {state.date.split('-').reverse().join('.')} · Türkiye saati
+          </Text>
+        )}
       </View>
       {!!notice && <MemberNotice message={notice} />}
-      {!state && busy && <ActivityIndicator color={colors.lime} accessibilityLabel="Mücadele yükleniyor" />}
-      {!state && !busy && <MemberButton label="Yeniden dene" onPress={() => void run(() => current.current.load())} />}
+      {!state && busy && (
+        <ActivityIndicator color={colors.gold} accessibilityLabel="Mücadele yükleniyor" />
+      )}
+      {!state && !busy && (
+        <MemberButton label="Yeniden dene" onPress={() => void run(() => current.current.load())} />
+      )}
       {state && !attempt && (
         <View style={[base.card, base.section]}>
           <Text style={base.subtitle}>Günün kelimeleri hazır</Text>
-          <Text style={base.body}>Günün hakkını şimdi oyna. Daha sonra aynı turdan devam edebilirsin.</Text>
-          <MemberButton label="Mücadeleyi başlat" primary disabled={busy} onPress={() => void run(() => current.current.start(state.date))} />
+          <Text style={base.body}>
+            Günün hakkını şimdi oyna. Daha sonra aynı turdan devam edebilirsin.
+          </Text>
+          <MemberButton
+            label="Mücadeleyi başlat"
+            primary
+            disabled={busy}
+            onPress={() => void run(() => current.current.start(state.date))}
+          />
         </View>
       )}
       {state && attempt && round && (
         <View style={[base.card, base.section]}>
           <View style={styles.scoreRow}>
             <Text style={[base.subtitle, styles.fill]}>
-              {attempt.phase === 'finished' ? 'Bugünün sonucu' : `Tur ${round.round} / ${ROUND_COUNT}`}
+              {attempt.phase === 'finished'
+                ? 'Bugünün sonucu'
+                : `Tur ${round.round} / ${ROUND_COUNT}`}
             </Text>
             <Text style={styles.score}>{numbers.format(attempt.points)} puan</Text>
           </View>
@@ -104,18 +150,27 @@ export function DailyScreen({
               key={`${state.date}:${round.round}`}
               busy={busy}
               round={round}
-              onGuess={(word, id) => run(() => current.current.guess(state.date, round.round, id, word))}
+              onGuess={(word, id) =>
+                run(() => current.current.guess(state.date, round.round, id, word))
+              }
             />
           ) : (
             <Text style={base.body}>
               {attempt.phase === 'finished'
                 ? `${attempt.solved} / ${ROUND_COUNT} kelime çözdün.`
-                : round.solved ? 'Kelimeyi buldun.' : 'Bu turun tahmin hakkı doldu.'}
+                : round.solved
+                  ? 'Kelimeyi buldun.'
+                  : 'Bu turun tahmin hakkı doldu.'}
               {round.answer ? ` Cevap: ${round.answer}.` : ''}
             </Text>
           )}
           {attempt.phase === 'roundEnd' && (
-            <MemberButton primary label="Sonraki kelime" disabled={busy} onPress={() => void run(() => current.current.next(state.date, round.round))} />
+            <MemberButton
+              primary
+              label="Sonraki kelime"
+              disabled={busy}
+              onPress={() => void run(() => current.current.next(state.date, round.round))}
+            />
           )}
           {attempt.phase === 'finished' && state.rank !== null && (
             <Text style={styles.score}>Günün sırası: {numbers.format(state.rank)}</Text>
@@ -125,16 +180,36 @@ export function DailyScreen({
       {state && (
         <View style={[base.card, base.section]}>
           <View style={styles.scoreRow}>
-            <Text accessibilityRole="header" style={[base.subtitle, styles.fill]}>Günün sıralaması</Text>
-            <MemberButton label="Yenile" disabled={busy} onPress={() => void run(() => current.current.load())} />
+            <Text accessibilityRole="header" style={[base.subtitle, styles.fill]}>
+              Günün sıralaması
+            </Text>
+            <MemberButton
+              label="Yenile"
+              disabled={busy}
+              onPress={() => void run(() => current.current.load())}
+            />
           </View>
-          {state.leaderboard.length === 0 && <Text style={base.body}>Henüz tamamlanan mücadele yok.</Text>}
-          {state.leaderboard.map(entry => (
-            <View key={entry.username} style={[styles.scoreRow, styles.rankRow, entry.username === username && styles.currentRank]}>
+          {state.leaderboard.length === 0 && (
+            <Text style={base.body}>Henüz tamamlanan mücadele yok.</Text>
+          )}
+          {state.leaderboard.map((entry) => (
+            <View
+              key={entry.username}
+              style={[
+                styles.scoreRow,
+                styles.rankRow,
+                entry.username === username && styles.currentRank,
+              ]}
+            >
               <Text style={styles.score}>{numbers.format(entry.rank)}</Text>
               <View style={styles.fill}>
-                <Text style={base.label}>{entry.username}{entry.username === username ? ' (sen)' : ''}</Text>
-                <Text style={base.caption}>{entry.solved} / {ROUND_COUNT} kelime</Text>
+                <Text style={base.label}>
+                  {entry.username}
+                  {entry.username === username ? ' (sen)' : ''}
+                </Text>
+                <Text style={base.caption}>
+                  {entry.solved} / {ROUND_COUNT} kelime
+                </Text>
               </View>
               <Text style={base.label}>{numbers.format(entry.points)}</Text>
             </View>
@@ -146,13 +221,16 @@ export function DailyScreen({
 }
 
 function DailyBoard({
-  round, busy, onGuess,
+  round,
+  busy,
+  onGuess,
 }: {
   round: DailyRoundView;
   busy: boolean;
   onGuess: (word: string, requestId: string) => Promise<void>;
 }) {
   const { width } = useWindowDimensions();
+  const { showMarkSymbols } = useMarkSymbols();
   const size = Math.max(29, Math.min(48, Math.floor((width - 90) / WORD_LENGTH)));
   const [draft, setDraft] = useState('');
   const currentDraft = useRef('');
@@ -174,7 +252,9 @@ function DailyBoard({
     setDraft(word);
   }
 
-  useEffect(() => { edit(''); }, [guesses.length]);
+  useEffect(() => {
+    edit('');
+  }, [guesses.length]);
 
   async function send() {
     if (busy || currentDraft.current.length !== WORD_LENGTH) return;
@@ -203,10 +283,18 @@ function DailyBoard({
                     key={cell}
                     accessible
                     accessibilityLabel={label}
-                    style={[styles.tile, { width: size, height: size }, mark && { backgroundColor: colors[mark] }]}
+                    style={[
+                      styles.tile,
+                      { width: size, height: size },
+                      mark && { backgroundColor: colors[mark] },
+                    ]}
                   >
                     <Text style={styles.tileText}>{letter}</Text>
-                    {mark && <Text style={styles.markSymbol} importantForAccessibility="no">{markSymbols[mark]}</Text>}
+                    {mark && showMarkSymbols && (
+                      <Text style={styles.markSymbol} importantForAccessibility="no">
+                        {markSymbols[mark]}
+                      </Text>
+                    )}
                   </View>
                 );
               })}
@@ -218,7 +306,7 @@ function DailyBoard({
       <View style={styles.keyboard}>
         {rows.map((row, index) => (
           <View key={row} style={[styles.keys, index === rows.length - 1 && styles.shortRow]}>
-            {Array.from(row).map(letter => {
+            {Array.from(row).map((letter) => {
               const mark = marks[letter];
               return (
                 <Pressable
@@ -228,10 +316,12 @@ function DailyBoard({
                   accessibilityState={{ disabled: busy }}
                   disabled={busy}
                   onPress={() => {
-                    if (currentDraft.current.length < WORD_LENGTH) edit(currentDraft.current + letter);
+                    if (currentDraft.current.length < WORD_LENGTH)
+                      edit(currentDraft.current + letter);
                   }}
                   style={({ pressed }) => [
-                    styles.key, mark && { backgroundColor: colors[mark] },
+                    styles.key,
+                    mark && { backgroundColor: colors[mark] },
                     index === rows.length - 1 && styles.shortKey,
                     pressed && styles.pressed,
                   ]}
@@ -243,8 +333,17 @@ function DailyBoard({
           </View>
         ))}
         <View style={styles.scoreRow}>
-          <MemberButton label="Harf sil" disabled={busy || !draft} onPress={() => edit(currentDraft.current.slice(0, -1))} />
-          <MemberButton primary label="Tahmin et" disabled={busy || draft.length !== WORD_LENGTH} onPress={() => void send()} />
+          <MemberButton
+            label="Harf sil"
+            disabled={busy || !draft}
+            onPress={() => edit(currentDraft.current.slice(0, -1))}
+          />
+          <MemberButton
+            primary
+            label="Tahmin et"
+            disabled={busy || draft.length !== WORD_LENGTH}
+            onPress={() => void send()}
+          />
         </View>
       </View>
     </>
@@ -254,12 +353,25 @@ function DailyBoard({
 const styles = StyleSheet.create({
   fill: { flex: 1, minWidth: 0 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  score: { color: colors.lime, fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  rankRow: { borderTopColor: colors.line, borderTopWidth: 1, minHeight: 48, paddingVertical: 8, paddingHorizontal: 5 },
-  currentRank: { backgroundColor: colors.violetSoft, borderRadius: 8 },
+  score: { color: colors.gold, fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  rankRow: {
+    borderTopColor: colors.line,
+    borderTopWidth: 1,
+    minHeight: 48,
+    paddingVertical: 8,
+    paddingHorizontal: 5,
+  },
+  currentRank: { backgroundColor: colors.tealSoft, borderRadius: 8 },
   board: { alignItems: 'center', gap: 4 },
   tiles: { flexDirection: 'row', gap: 4 },
-  tile: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: 7 },
+  tile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+    borderColor: colors.line,
+    borderWidth: 1,
+    borderRadius: 7,
+  },
   tileText: { color: colors.ink, fontSize: 20, fontWeight: '900' },
   markSymbol: { position: 'absolute', top: 1, right: 3, color: colors.ink, fontSize: 10 },
   keyboard: { gap: 5 },

@@ -5,11 +5,8 @@ import {
   Check,
   CircleHelp,
   CircleUserRound,
-  Moon,
-  Sun,
+  Settings,
   Trophy,
-  Volume2,
-  VolumeX,
   X,
 } from 'lucide-react';
 import {
@@ -67,84 +64,123 @@ export function playSound(type: 'tap' | 'solve', enabled: boolean) {
 
 export function Brand({ home }: { home: () => void }) {
   return (
-    <button type="button" className="brand" onClick={home} aria-label="Kelime Arenası ana menü">
-      <span className="brand-mark" aria-hidden="true">
-        <span>K</span>
-        <span>A</span>
-      </span>
+    <button type="button" className="brand" onClick={home} aria-label="HarfArena ana menü">
+      <img className="brand-mark" src="/harfarena-icon.png" width={42} height={42} alt="" />
       <span className="brand-name">
-        KELİME<span>ARENASI</span>
+        Harf<span>Arena</span>
       </span>
     </button>
   );
 }
 
+const headerRating = new Intl.NumberFormat('tr-TR');
+
 export function Header({
   home,
-  help,
   profile,
   accountName,
+  accountRating,
   leaderboard,
-  preferences,
-  setPreferences,
+  openSettings,
 }: {
   home: () => void;
-  help: () => void;
   profile: () => void;
   accountName?: string;
+  accountRating?: number;
   leaderboard: () => void;
-  preferences: Preferences;
-  setPreferences: (value: Preferences) => void;
+  openSettings: () => void;
 }) {
   return (
     <header className="topbar">
       <div className="site-width topbar-inner">
         <Brand home={home} />
         <nav aria-label="Ana gezinti" className="nav-controls">
-          <button className="nav-help" onClick={help} aria-label="Nasıl oynanır?">
-            <CircleHelp size={17} />
-            <span>Nasıl oynanır?</span>
-          </button>
-          <button className="nav-help" onClick={leaderboard} aria-label="Lider tablosu" title="Lider tablosu">
-            <Trophy size={17} />
+          <button
+            type="button"
+            className="nav-help"
+            onClick={leaderboard}
+            aria-label="Lider tablosu"
+            title="Lider tablosu"
+          >
+            <Trophy size={18} aria-hidden="true" />
             <span>Lider tablosu</span>
           </button>
-          <div className="nav-divider" />
           <button
-            className="icon-button"
-            title={preferences.sound ? 'Sesi kapat' : 'Sesi aç'}
-            aria-label="Ses"
-            aria-pressed={preferences.sound}
-            onClick={() => {
-              playSound('tap', !preferences.sound);
-              setPreferences({ ...preferences, sound: !preferences.sound });
-            }}
+            type="button"
+            className="icon-button nav-settings"
+            onClick={openSettings}
+            aria-label="Ayarlar"
+            title="Ayarlar"
           >
-            {preferences.sound ? <Volume2 size={19} /> : <VolumeX size={19} />}
+            <Settings size={19} aria-hidden="true" />
           </button>
           <button
-            className="icon-button"
-            title={preferences.theme === 'dark' ? 'Açık temaya geç' : 'Koyu temaya geç'}
-            aria-label="Açık tema"
-            aria-pressed={preferences.theme === 'light'}
-            onClick={() => {
-              setPreferences({ ...preferences, theme: preferences.theme === 'dark' ? 'light' : 'dark' });
-            }}
-          >
-            {preferences.theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
-          </button>
-          <button
+            type="button"
             className="nav-profile account-button"
             onClick={profile}
             aria-label={accountName ? 'Hesabım' : 'Giriş / Kayıt'}
           >
-            <CircleUserRound size={18} />
-            <span className="account-label">{accountName ? 'Hesabım' : 'Giriş / Kayıt'}</span>
-            <span className="account-label-compact">{accountName ? 'Hesap' : 'Giriş'}</span>
+            <CircleUserRound size={20} aria-hidden="true" />
+            <span className="account-label">
+              <strong>{accountName ?? 'Giriş / Kayıt'}</strong>
+              {accountRating !== undefined && <small>{headerRating.format(accountRating)} puan</small>}
+            </span>
+            <span className="account-label-compact">{accountName ?? 'Giriş'}</span>
           </button>
         </nav>
       </div>
     </header>
+  );
+}
+
+export function PreferencesPanel({
+  preferences,
+  setPreferences,
+  help,
+}: {
+  preferences: Preferences;
+  setPreferences: (value: Preferences) => void;
+  help: () => void;
+}) {
+  return (
+    <div className="settings-options">
+      <label className="preferences-control">
+        <strong>Ses efektleri</strong>
+        <input
+          type="checkbox"
+          checked={preferences.sound}
+          onChange={(event) => {
+            const sound = event.currentTarget.checked;
+            setPreferences({ ...preferences, sound });
+            playSound('tap', sound);
+          }}
+        />
+      </label>
+      <label className="preferences-control">
+        <strong>Açık tema</strong>
+        <input
+          type="checkbox"
+          checked={preferences.theme === 'light'}
+          onChange={(event) =>
+            setPreferences({ ...preferences, theme: event.currentTarget.checked ? 'light' : 'dark' })
+          }
+        />
+      </label>
+      <label className="preferences-control">
+        <div>
+          <strong>Harf işaretleri</strong>
+          <p>Tahmin sonuçlarını renklerle birlikte simgelerle göster.</p>
+        </div>
+        <input
+          type="checkbox"
+          checked={preferences.symbols}
+          onChange={(event) => setPreferences({ ...preferences, symbols: event.currentTarget.checked })}
+        />
+      </label>
+      <button type="button" className="button button-secondary" onClick={help}>
+        <CircleHelp size={17} aria-hidden="true" /> Nasıl oynanır?
+      </button>
+    </div>
   );
 }
 

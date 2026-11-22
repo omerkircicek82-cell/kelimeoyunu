@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from '
 import {
   Alert,
   BackHandler,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,7 +15,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as SecureStore from 'expo-secure-store';
 import {
   CLOSENESS_CORRECT_POINTS,
   CLOSENESS_PRESENT_POINTS,
@@ -39,6 +39,8 @@ import {
   type RoundMode,
   type TeamId,
 } from '@arena/shared';
+import { useMarkSymbols } from '../services/useMarkSymbols';
+import { ArenaBackdrop, arenaCrest } from './ArenaArt';
 import { GameScreens } from './GameScreens';
 import { baseStyles as base, colors } from './Theme';
 
@@ -60,7 +62,6 @@ export interface ArenaAppProps {
 
 type Tab = 'home' | 'help' | 'settings';
 type Scene = Tab | 'create' | 'join' | 'scoring';
-const marksPreferenceKey = 'arena.show-mark-symbols';
 const tabs: ReadonlyArray<{ id: Tab; label: string; icon: string }> = [
   { id: 'home', label: 'Arena', icon: '▦' },
   { id: 'help', label: 'Rehber', icon: '?' },
@@ -171,13 +172,13 @@ function Action({
 
 function Brand() {
   return (
-    <View style={styles.brand} accessibilityLabel="Kelime Arenası" accessible>
-      <View style={styles.brandMark} importantForAccessibility="no-hide-descendants">
-        <Text style={styles.brandInitial}>K</Text>
-        <View style={styles.brandCorner} />
-      </View>
-      <Text style={styles.brandText}>Kelime Arenası</Text>
-    </View>
+    <Image
+      source={arenaCrest}
+      accessibilityRole="image"
+      accessibilityLabel="HarfArena"
+      resizeMode="contain"
+      style={styles.headerCrest}
+    />
   );
 }
 
@@ -203,14 +204,10 @@ function Home({ open, enabled }: { open: (scene: Scene) => void; enabled: boolea
           <View style={styles.heroTileTop} />
           <View style={styles.heroTileBottom} />
         </View>
-        <Text style={styles.heroKicker}>Çok oyunculu kelime oyunu</Text>
-        <Text accessibilityRole="header" style={styles.heroFirst}>
-          KELİME
+        <Text accessibilityRole="header" style={styles.heroTitle}>
+          Özel Oda
         </Text>
-        <Text accessibilityRole="header" style={[styles.heroFirst, styles.heroSecond]}>
-          ARENASI
-        </Text>
-        <Text style={styles.heroCopy}>Arkadaşlarınla aynı kelimeyi çöz, arenada zirveye çık.</Text>
+        <Text style={styles.heroCopy}>Oda kur, davet koduyla katıl veya canlı maçı izle.</Text>
         <View style={styles.heroStats}>
           <View style={styles.heroStat}>
             <Text style={styles.statValue}>2–8</Text>
@@ -484,7 +481,7 @@ function Settings({
             value={showMarkSymbols}
             onValueChange={saveMarkSymbols}
             trackColor={{ false: colors.line, true: colors.correct }}
-            thumbColor={showMarkSymbols ? colors.lime : colors.muted}
+            thumbColor={showMarkSymbols ? colors.gold : colors.muted}
           />
         </View>
       </View>
@@ -1113,11 +1110,9 @@ export function ArenaApp({
 }: ArenaAppProps) {
   const [scene, setScene] = useState<Scene>(joinCode ? 'join' : 'home');
   const [busy, setBusy] = useState(false);
-  const [showMarkSymbols, setShowMarkSymbols] = useState(true);
+  const { showMarkSymbols, saveMarkSymbols, preferenceError } = useMarkSymbols();
   const [localError, setLocalError] = useState<string | null>(null);
   const pending = useRef(false);
-  const preferenceWrites = useRef<Promise<void>>(Promise.resolve());
-  const preferenceTouched = useRef(false);
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const enabled = online && !recovering;
   const entryOpen = scene === 'create' || scene === 'join';
@@ -1126,26 +1121,6 @@ export function ArenaApp({
   useEffect(() => {
     if (!room && joinCode) setScene('join');
   }, [joinCode, room]);
-
-  useEffect(() => {
-    let active = true;
-    void SecureStore.getItemAsync(marksPreferenceKey)
-      .then((stored) => {
-        if (active && !preferenceTouched.current && stored === 'false') setShowMarkSymbols(false);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  function saveMarkSymbols(value: boolean) {
-    preferenceTouched.current = true;
-    setShowMarkSymbols(value);
-    preferenceWrites.current = preferenceWrites.current
-      .then(() => SecureStore.setItemAsync(marksPreferenceKey, String(value)))
-      .catch(() => setLocalError('Görünüm ayarı cihaza kaydedilemedi.'));
-  }
 
   useEffect(() => {
     scroller.current?.scrollTo({ y: 0, animated: false });
@@ -1214,7 +1189,7 @@ export function ArenaApp({
     if (!room) return;
     const url = `${serverUrl.replace(/\/+$/, '')}/room/${room.code}`;
     const best = room.players[0];
-    let message = `Kelime Arenası’nda bana katıl! Oda kodu: ${room.code}\n${url}`;
+    let message = `HarfArena’nda bana katıl! Oda kodu: ${room.code}\n${url}`;
     if (results) {
       const teamResult = room.winnerTeamId
         ? `${teamLabels[room.winnerTeamId]} kazandı.`
@@ -1222,13 +1197,14 @@ export function ArenaApp({
       const individualResult = best
         ? `${best.name} maçı ${best.points.toLocaleString('tr-TR')} puanla tamamladı.`
         : 'Maç tamamlandı.';
-      message = `Kelime Arenası • ${room.name}\n${room.gameMode === 'ffa' ? individualResult : teamResult}\n${url}`;
+      message = `HarfArena • ${room.name}\n${room.gameMode === 'ffa' ? individualResult : teamResult}\n${url}`;
     }
     void Share.share({ message }).catch(() => setLocalError('Paylaşım açılamadı.'));
   }
 
   return (
     <SafeAreaView style={styles.screen}>
+      <ArenaBackdrop muted />
       <View style={styles.header}>
         {!room && (entryOpen || scene === 'scoring') ? (
           <Pressable
@@ -1266,9 +1242,9 @@ export function ArenaApp({
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
-          {Boolean(localError || error) && (
+          {Boolean(localError || error || preferenceError) && (
             <View accessibilityRole="alert" style={styles.notice}>
-              <Text style={styles.noticeText}>{localError || error}</Text>
+              <Text style={styles.noticeText}>{localError || error || preferenceError}</Text>
             </View>
           )}
           {room ? (
@@ -1370,31 +1346,10 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
   },
-  brand: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandText: { color: colors.ink, fontSize: 16, fontWeight: '900', flexShrink: 1 },
-  brandMark: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.lime,
-    overflow: 'hidden',
-  },
-  brandInitial: { fontSize: 20, fontWeight: '900', color: colors.background },
-  brandCorner: {
-    position: 'absolute',
-    top: 3,
-    right: 3,
-    borderRadius: 2,
-    width: 5,
-    height: 5,
-    backgroundColor: colors.background,
-    opacity: 0.5,
-  },
+  headerCrest: { width: 84, height: 52 },
   roomHeader: { minWidth: 0, flex: 1, gap: 2 },
   roomHeaderTitle: { color: colors.ink, fontWeight: '800', fontSize: 15 },
-  roomHeaderCode: { color: colors.violet, fontWeight: '700', fontSize: 11, letterSpacing: 0.3 },
+  roomHeaderCode: { color: colors.tealLight, fontWeight: '700', fontSize: 11, letterSpacing: 0.3 },
   connection: {
     flexDirection: 'row',
     gap: 6,
@@ -1406,7 +1361,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
-  connectionDot: { width: 7, height: 7, backgroundColor: colors.lime, borderRadius: 4 },
+  connectionDot: { width: 7, height: 7, backgroundColor: colors.positive, borderRadius: 4 },
   connectionPending: { backgroundColor: colors.amber },
   connectionLabel: { color: colors.muted, fontSize: 11, fontWeight: '700' },
   scroll: {
@@ -1440,7 +1395,7 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     borderWidth: 1,
     borderColor: colors.heroLine,
-    backgroundColor: colors.violetSoft,
+    backgroundColor: colors.tealSoft,
     transform: [{ rotate: '18deg' }],
   },
   heroTileBottom: {
@@ -1455,15 +1410,13 @@ const styles = StyleSheet.create({
     borderColor: colors.heroTileLine,
     transform: [{ rotate: '-15deg' }],
   },
-  heroKicker: { marginBottom: 10, color: colors.violet, fontSize: 12, fontWeight: '800' },
-  heroFirst: {
-    fontSize: 48,
-    lineHeight: 50,
-    letterSpacing: -2.5,
-    fontWeight: '900',
+  heroTitle: {
     color: colors.ink,
+    fontFamily: 'serif',
+    fontSize: 38,
+    lineHeight: 45,
+    fontWeight: '800',
   },
-  heroSecond: { color: colors.lime },
   heroCopy: { color: colors.ink, fontSize: 16, fontWeight: '600', lineHeight: 22, marginTop: 8 },
   heroStats: {
     flexDirection: 'row',
@@ -1488,19 +1441,19 @@ const styles = StyleSheet.create({
     minHeight: 76,
     padding: 12,
   },
-  playActionPrimary: { backgroundColor: colors.lime, borderColor: colors.lime },
+  playActionPrimary: { backgroundColor: colors.gold, borderColor: colors.gold },
   playIcon: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: colors.violetSoft,
+    backgroundColor: colors.tealSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playIconPrimary: { backgroundColor: colors.limeInset },
-  playIconText: { color: colors.violet, fontSize: 24, fontWeight: '700' },
+  playIconPrimary: { backgroundColor: colors.goldInset },
+  playIconText: { color: colors.tealLight, fontSize: 24, fontWeight: '700' },
   playTextPrimary: { color: colors.background },
-  playCaptionPrimary: { color: colors.limeDetail },
+  playCaptionPrimary: { color: colors.goldInk },
   playArrow: { color: colors.muted, fontSize: 27 },
   tabBar: { borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.panel },
   tabList: { width: '100%', maxWidth: 560, alignSelf: 'center', flexDirection: 'row', padding: 6 },
@@ -1512,9 +1465,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabIconActive: { backgroundColor: colors.violetSoft },
+  tabIconActive: { backgroundColor: colors.tealSoft },
   tabGlyph: { color: colors.muted, fontWeight: '800', fontSize: 17 },
-  tabGlyphActive: { color: colors.lime },
+  tabGlyphActive: { color: colors.gold },
   tabLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   tabLabelActive: { color: colors.ink },
   scoreValues: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -1534,13 +1487,13 @@ const styles = StyleSheet.create({
   },
   compactAction: { minHeight: 44, paddingVertical: 8 },
   actionLabel: { fontSize: 15, fontWeight: '800', textAlign: 'center' },
-  primary: { backgroundColor: colors.lime, borderColor: colors.lime },
+  primary: { backgroundColor: colors.gold, borderColor: colors.gold },
   secondary: { backgroundColor: colors.surface, borderColor: colors.line },
   plain: { backgroundColor: 'transparent', borderColor: 'transparent', paddingHorizontal: 0 },
   danger: { backgroundColor: 'transparent', borderColor: colors.line },
   primaryText: { color: colors.background },
   secondaryText: { color: colors.ink },
-  plainText: { color: colors.violet },
+  plainText: { color: colors.tealLight },
   dangerText: { color: colors.danger },
   pressed: { opacity: 0.7 },
   disabled: { opacity: 0.45 },
@@ -1581,7 +1534,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   back: { minHeight: 44, justifyContent: 'center' },
-  backText: { color: colors.violet, fontSize: 15, fontWeight: '800' },
+  backText: { color: colors.tealLight, fontSize: 15, fontWeight: '800' },
   field: { gap: 7 },
   input: {
     borderWidth: 1,
@@ -1608,7 +1561,7 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: colors.background,
   },
-  capacitySelected: { backgroundColor: colors.lime, borderColor: colors.lime },
+  capacitySelected: { backgroundColor: colors.gold, borderColor: colors.gold },
   capacityText: { color: colors.ink, fontSize: 16, fontWeight: '800' },
   capacitySelectedText: { color: colors.background },
   sectionHeader: { gap: 5 },
@@ -1625,7 +1578,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  modeChoiceActive: { backgroundColor: colors.violetSoft, borderColor: colors.violet },
+  modeChoiceActive: { backgroundColor: colors.tealSoft, borderColor: colors.tealLight },
   modeRadio: {
     width: 19,
     height: 19,
@@ -1635,17 +1588,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modeRadioActive: { borderColor: colors.lime },
-  modeDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.lime },
+  modeRadioActive: { borderColor: colors.gold },
+  modeDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.gold },
   modeChoiceText: { flex: 1, minWidth: 0, gap: 2 },
   modeBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.violetSoft,
+    backgroundColor: colors.tealSoft,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  modeBadgeText: { color: colors.violet, fontSize: 12, fontWeight: '800' },
+  modeBadgeText: { color: colors.tealLight, fontSize: 12, fontWeight: '800' },
   inviteCard: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1653,8 +1606,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  roomCode: { color: colors.lime, fontSize: 27, fontWeight: '900', letterSpacing: 2, marginTop: 3 },
-  playerCount: { color: colors.violet, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  roomCode: { color: colors.gold, fontSize: 27, fontWeight: '900', letterSpacing: 2, marginTop: 3 },
+  playerCount: { color: colors.tealLight, fontWeight: '800', fontVariant: ['tabular-nums'] },
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1671,12 +1624,12 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.violetSoft,
+    backgroundColor: colors.tealSoft,
   },
-  avatarHost: { backgroundColor: '#4a562f' },
-  avatarText: { color: colors.violet, fontSize: 17, fontWeight: '900' },
-  avatarHostText: { color: colors.lime },
-  ready: { color: colors.lime },
+  avatarHost: { backgroundColor: '#503c1f' },
+  avatarText: { color: colors.tealLight, fontSize: 17, fontWeight: '900' },
+  avatarHostText: { color: colors.gold },
+  ready: { color: colors.positive },
   kick: { minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   kickText: { color: colors.danger, fontSize: 13, fontWeight: '800' },
   buttonRow: { flexDirection: 'row', gap: 8 },

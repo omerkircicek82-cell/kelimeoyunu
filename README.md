@@ -1,4 +1,4 @@
-# Kelime Arenası
+# HarfArena
 
 Arkadaşların davet koduyla aynı odaya katıldığı, gerçek zamanlı bir Türkçe kelime oyunu. Oda sahibi bireysel maçlarda 2–8 oyuncu sınırı, tüm maçlarda 3–10 tur ve süreli modda 30–300 saniyelik tur süresi seçebilir. Varsayılan maç beş tur ve tur başına 90 saniyedir. Her kelime için beş tahmin hakkı vardır.
 

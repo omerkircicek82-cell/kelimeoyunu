@@ -759,8 +759,8 @@ export function MatchResults({
           </button>
         )}
         <ShareButton
-          title="Kelime Arenası sonucu"
-          text={`Kelime Arenası: ${mine ? `${mine.rank}. oldum ve ${number(mine.points)} puan topladım!` : `Arena şampiyonu: ${winnerText}`}`}
+          title="HarfArena sonucu"
+          text={`HarfArena: ${mine ? `${mine.rank}. oldum ve ${number(mine.points)} puan topladım!` : `Arena şampiyonu: ${winnerText}`}`}
           label="Sonucu paylaş"
           notify={notify}
         />

@@ -1,6 +1,7 @@
 const prefix = "kelime-arenasi-shell-";
-const cacheName = `${prefix}v1`;
+const cacheName = `${prefix}v2`;
 const shell = "/index.html";
+const artwork = new Set(["/harfarena-hall.webp", "/harfarena-crest.webp", "/harfarena-icon.png"]);
 
 async function saveShell(cache, response) {
   const html = await response.clone().text();
@@ -16,7 +17,10 @@ self.addEventListener("install", event => {
     const cache = await caches.open(cacheName);
     const response = await fetch(shell, { cache: "reload" });
     if (!response.ok) throw new Error("Oyun sayfası alınamadı.");
-    await saveShell(cache, response);
+    await Promise.all([
+      saveShell(cache, response),
+      cache.addAll([...artwork].map(path => new Request(path, { cache: "reload" }))),
+    ]);
     await self.skipWaiting();
   })());
 });
@@ -45,7 +49,8 @@ async function navigation(request) {
 
 async function asset(request) {
   const cache = await caches.open(cacheName);
-  const previous = await cache.match(request);
+  // Public files share one response across module and precache requests.
+  const previous = await cache.match(request, { ignoreVary: true });
   if (previous) return previous;
   const response = await fetch(request);
   if (response.ok) await cache.put(request, response.clone()).catch(() => {});
@@ -58,5 +63,7 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/socket.io/")) return;
   if (request.mode === "navigate") event.respondWith(navigation(request));
-  else if (/^\/assets\/[^/]+\.(?:js|css)$/.test(url.pathname)) event.respondWith(asset(request));
+  else if (artwork.has(url.pathname) || /^\/assets\/[^/]+\.(?:js|css)$/.test(url.pathname)) {
+    event.respondWith(asset(request));
+  }
 });

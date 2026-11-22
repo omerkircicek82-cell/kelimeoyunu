@@ -30,7 +30,7 @@ export default function mobileConfig({ config }: ConfigContext): ExpoConfig {
 
   return {
     ...config,
-    name: preview ? "Kelime Arenası Önizleme" : (config.name ?? "Kelime Arenası"),
+    name: preview ? "HarfArena Önizleme" : (config.name ?? "HarfArena"),
     slug: config.slug ?? "kelime-arenasi",
     android: {
       ...config.android,
