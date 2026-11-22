@@ -20,15 +20,24 @@ import {
   CLOSENESS_PRESENT_POINTS,
   DEFAULT_ROUND_MODE,
   FINAL_GUESS_MS,
+  GAME_MODES,
   MAX_ATTEMPTS,
   ROUND_COUNT,
+  ROUND_COUNT_MIN,
+  ROUND_COUNT_MAX,
   ROUND_MS,
+  ROUND_SECONDS_MIN,
+  ROUND_SECONDS_MAX,
+  TEAM_IDS,
+  TEAM_SIZE,
+  type GameMode,
   type Mark,
   type PlayerView,
   type Requests,
   type ResponseFor,
   type RoomView,
   type RoundMode,
+  type TeamId,
 } from '@arena/shared';
 import { GameScreens } from './GameScreens';
 import { baseStyles as base, colors } from './Theme';
@@ -59,9 +68,60 @@ const tabs: ReadonlyArray<{ id: Tab; label: string; icon: string }> = [
 ];
 type Variant = 'primary' | 'secondary' | 'plain' | 'danger';
 const roundModeOptions: ReadonlyArray<{ value: RoundMode; label: string; detail: string }> = [
-  { value: 'timed', label: 'Süreli', detail: `Her tur ${ROUND_MS / 1000} saniyeyle başlar.` },
+  { value: 'timed', label: 'Süreli', detail: 'Her tur belirlediğin süreyle başlar.' },
   { value: 'untimed', label: 'Süresiz', detail: 'Sayaç ilk doğru tahminle başlar.' },
 ];
+
+const gameModeLabels: Record<GameMode, string> = {
+  ffa: 'Bireysel',
+  '2v2': '2’ye 2',
+  '3v3': '3’e 3',
+};
+const teamLabels: Record<TeamId, string> = { a: 'Takım A', b: 'Takım B' };
+
+type OnlineRules = Required<
+  Pick<
+    Requests['room:create'],
+    'roundMode' | 'gameMode' | 'roundCount' | 'roundSeconds' | 'maxPlayers'
+  >
+>;
+type RulesDraft = Omit<OnlineRules, 'roundCount' | 'roundSeconds'> & {
+  roundCount: string;
+  roundSeconds: string;
+};
+
+function draftRules(room?: RoomView): RulesDraft {
+  return {
+    gameMode: room?.gameMode ?? 'ffa',
+    roundMode: room?.roundMode ?? DEFAULT_ROUND_MODE,
+    maxPlayers: room?.maxPlayers ?? 4,
+    roundCount: String(room?.roundCount ?? ROUND_COUNT),
+    roundSeconds: String(room?.roundSeconds ?? ROUND_MS / 1000),
+  };
+}
+
+function readRules(draft: RulesDraft, minimum: number): OnlineRules | null {
+  const roundCount = Number(draft.roundCount);
+  const seconds = Number(draft.roundSeconds);
+  const validSeconds =
+    Number.isInteger(seconds) && seconds >= ROUND_SECONDS_MIN && seconds <= ROUND_SECONDS_MAX;
+  const maxPlayers = TEAM_SIZE[draft.gameMode] * 2 || draft.maxPlayers;
+  if (
+    !Number.isInteger(roundCount) ||
+    roundCount < ROUND_COUNT_MIN ||
+    roundCount > ROUND_COUNT_MAX ||
+    (draft.roundMode === 'timed' && !validSeconds) ||
+    maxPlayers < minimum
+  ) {
+    return null;
+  }
+  return {
+    ...draft,
+    roundCount,
+    roundSeconds: validSeconds ? seconds : ROUND_MS / 1000,
+    maxPlayers,
+  };
+}
 
 const sample: ReadonlyArray<{ word: string; marks: readonly Mark[] }> = [
   { word: 'ŞEHİR', marks: ['present', 'present', 'absent', 'absent', 'absent'] },
@@ -157,7 +217,9 @@ function Home({ open, enabled }: { open: (scene: Scene) => void; enabled: boolea
             <Text style={base.caption}>Oyuncu</Text>
           </View>
           <View style={styles.heroStat}>
-            <Text style={styles.statValue}>{ROUND_COUNT}</Text>
+            <Text style={styles.statValue}>
+              {ROUND_COUNT_MIN}–{ROUND_COUNT_MAX}
+            </Text>
             <Text style={base.caption}>Tur</Text>
           </View>
           <View style={styles.heroStat}>
@@ -302,7 +364,7 @@ function Help({ openScoring }: { openScoring: () => void }) {
           Nasıl oynanır?
         </Text>
         <Text style={base.body}>
-          Aynı gizli kelimeyi tahmin et ve {ROUND_COUNT} turun sonunda en yüksek puana ulaş.
+          Aynı gizli kelimeyi tahmin et ve maç sonunda en yüksek puana ulaş.
         </Text>
       </View>
       <View style={[base.card, base.section]}>
@@ -316,6 +378,9 @@ function Help({ openScoring }: { openScoring: () => void }) {
       </View>
       <View style={[base.card, base.section]}>
         <Text style={base.subtitle}>Oyun modları</Text>
+        <Text style={base.body}>
+          Bireysel maç açabilir veya 2’ye 2 ve 3’e 3 takım maçlarında yarışabilirsin.
+        </Text>
         {roundModeOptions.map(({ value, label, detail }) => (
           <View key={value} style={styles.field}>
             <Text style={base.label}>{label}</Text>
@@ -356,7 +421,7 @@ function Scoring() {
         <Text style={base.subtitle}>Kelimeyi bulduğunda</Text>
         <Text style={base.body}>
           Doğru tahmin 500 puan kazandırır. Her iki modda da kullanılmayan tahmin hakları bonus
-          getirir. Süreli modda ilk {ROUND_MS / 1000} saniyenin kalan bölümüne göre hız bonusu da
+          getirir. Süreli modda turun başında belirlenen sürenin kalan bölümüne göre hız bonusu da
           eklenir.
         </Text>
       </View>
@@ -451,10 +516,12 @@ function Capacity({
   value,
   set,
   minimum = 2,
+  disabled = false,
 }: {
   value: number;
   set: (capacity: number) => void;
   minimum?: number;
+  disabled?: boolean;
 }) {
   return (
     <View style={styles.field}>
@@ -465,13 +532,13 @@ function Capacity({
             key={size}
             accessibilityRole="button"
             accessibilityLabel={`${size} oyuncu`}
-            accessibilityState={{ selected: size === value, disabled: size < minimum }}
-            disabled={size < minimum}
+            accessibilityState={{ selected: size === value, disabled: disabled || size < minimum }}
+            disabled={disabled || size < minimum}
             onPress={() => set(size)}
             style={[
               styles.capacityButton,
               size === value && styles.capacitySelected,
-              size < minimum && styles.disabled,
+              (disabled || size < minimum) && styles.disabled,
             ]}
           >
             <Text style={[styles.capacityText, size === value && styles.capacitySelectedText]}>
@@ -530,11 +597,123 @@ function RoundModeSelector({
   );
 }
 
-function RoundModeBadge({ mode }: { mode: RoundMode }) {
-  const label = mode === 'untimed' ? 'Süresiz' : 'Süreli';
+function RuleNumber({
+  label,
+  value,
+  minimum,
+  maximum,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  minimum: number;
+  maximum: number;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const valid = value !== '' && Number(value) >= minimum && Number(value) <= maximum;
   return (
-    <View style={styles.modeBadge} accessibilityLabel={`Oyun modu: ${label}`}>
-      <Text style={styles.modeBadgeText}>{label}</Text>
+    <Field label={label}>
+      <TextInput
+        accessibilityLabel={label}
+        editable={!disabled}
+        keyboardType="number-pad"
+        maxLength={String(maximum).length}
+        value={value}
+        onChangeText={(raw) => onChange(raw.replace(/[^0-9]/g, ''))}
+        style={styles.input}
+      />
+      <Text style={[base.caption, !valid && styles.ruleInvalid]}>
+        {minimum}–{maximum}
+      </Text>
+    </Field>
+  );
+}
+
+function RoomRulesEditor({
+  value,
+  onChange,
+  minimum = 2,
+  disabled,
+}: {
+  value: RulesDraft;
+  onChange: (value: RulesDraft) => void;
+  minimum?: number;
+  disabled: boolean;
+}) {
+  return (
+    <View style={base.section}>
+      <Field label="Maç türü">
+        <View style={styles.capacityRows} accessibilityRole="radiogroup">
+          {GAME_MODES.map((gameMode) => {
+            const selected = value.gameMode === gameMode;
+            const blocked = disabled || (gameMode !== 'ffa' && TEAM_SIZE[gameMode] * 2 < minimum);
+            return (
+              <Pressable
+                key={gameMode}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected, disabled: blocked }}
+                disabled={blocked}
+                onPress={() => onChange({ ...value, gameMode })}
+                style={[
+                  styles.capacityButton,
+                  selected && styles.capacitySelected,
+                  blocked && styles.disabled,
+                ]}
+              >
+                <Text style={[styles.capacityText, selected && styles.capacitySelectedText]}>
+                  {gameModeLabels[gameMode]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Field>
+      {value.gameMode === 'ffa' ? (
+        <Capacity
+          value={value.maxPlayers}
+          set={(maxPlayers) => onChange({ ...value, maxPlayers })}
+          minimum={minimum}
+          disabled={disabled}
+        />
+      ) : (
+        <Text style={base.caption}>Her takımda {TEAM_SIZE[value.gameMode]} oyuncu yer alır.</Text>
+      )}
+      <RuleNumber
+        label="Tur sayısı"
+        minimum={ROUND_COUNT_MIN}
+        maximum={ROUND_COUNT_MAX}
+        value={value.roundCount}
+        onChange={(roundCount) => onChange({ ...value, roundCount })}
+        disabled={disabled}
+      />
+      <RoundModeSelector
+        value={value.roundMode}
+        onChange={(roundMode) => onChange({ ...value, roundMode })}
+        disabled={disabled}
+      />
+      {value.roundMode === 'timed' && (
+        <RuleNumber
+          label="Tur süresi (saniye)"
+          minimum={ROUND_SECONDS_MIN}
+          maximum={ROUND_SECONDS_MAX}
+          value={value.roundSeconds}
+          onChange={(roundSeconds) => onChange({ ...value, roundSeconds })}
+          disabled={disabled}
+        />
+      )}
+    </View>
+  );
+}
+
+function RoomRulesBadge({ room }: { room: RoomView }) {
+  const time = room.roundMode === 'untimed' ? 'Süresiz' : `${room.roundSeconds} sn`;
+  return (
+    <View style={styles.modeBadge}>
+      <Text style={styles.modeBadgeText}>
+        {gameModeLabels[room.gameMode]} · {room.roundCount} tur · {time}
+      </Text>
     </View>
   );
 }
@@ -559,37 +738,41 @@ function EntryForm({
   accountName?: string;
   mode: 'create' | 'join';
   invitation: string | null;
-  submit: (input: {
-    playerName: string;
-    name?: string;
-    code: string;
-    maxPlayers: number;
-    roundMode: RoundMode;
-  }) => void;
+  submit: (
+    input: OnlineRules & {
+      playerName: string;
+      name?: string;
+      code: string;
+      spectate: boolean;
+    },
+  ) => void;
   enabled: boolean;
   busy: boolean;
 }) {
   const [playerName, setPlayerName] = useState(accountName ?? '');
   const [name, setName] = useState('');
   const [code, setCode] = useState(invitation ?? '');
-  const [maxPlayers, setMaxPlayers] = useState(4);
-  const [roundMode, setRoundMode] = useState<RoundMode>(DEFAULT_ROUND_MODE);
+  const [draft, setDraft] = useState(draftRules);
+  const [spectate, setSpectate] = useState(false);
   const join = mode === 'join';
   const title = join ? 'Odaya katıl' : 'Oda oluştur';
-  const valid = playerName.trim().length >= 2 && (!join || /^[A-Z0-9]{6}$/.test(code));
+  const rules = readRules(draft, 2);
+  const valid =
+    (spectate || playerName.trim().length >= 2) &&
+    (join ? /^[A-Z0-9]{6}$/.test(code) : rules !== null);
 
   useEffect(() => {
     if (invitation) setCode(invitation);
   }, [invitation]);
 
   function enter() {
-    if (!valid || busy || !enabled) return;
+    if (!valid || !rules || busy || !enabled) return;
     submit({
+      ...rules,
       playerName: playerName.trim(),
       name: name.trim() || undefined,
       code,
-      maxPlayers,
-      roundMode,
+      spectate,
     });
   }
 
@@ -599,19 +782,43 @@ function EntryForm({
         {title}
       </Text>
       <View style={[base.card, base.section]}>
-        <Field label="Oyuncu adın">
-          <TextInput
-            accessibilityLabel="Oyuncu adın"
-            value={playerName}
-            editable={!accountName}
-            onChangeText={setPlayerName}
-            placeholder="Örn. Deniz"
-            placeholderTextColor={colors.muted}
-            autoCapitalize="words"
-            maxLength={24}
-            style={styles.input}
-          />
-        </Field>
+        {join && (
+          <View style={styles.buttonRow}>
+            <View style={styles.fill}>
+              <Action
+                title="Oyna"
+                onPress={() => setSpectate(false)}
+                compact
+                disabled={busy}
+                variant={spectate ? 'secondary' : 'primary'}
+              />
+            </View>
+            <View style={styles.fill}>
+              <Action
+                title="İzle"
+                onPress={() => setSpectate(true)}
+                compact
+                disabled={busy}
+                variant={spectate ? 'primary' : 'secondary'}
+              />
+            </View>
+          </View>
+        )}
+        {!spectate && (
+          <Field label="Oyuncu adın">
+            <TextInput
+              accessibilityLabel="Oyuncu adın"
+              value={playerName}
+              editable={!busy && !accountName}
+              onChangeText={setPlayerName}
+              placeholder="Örn. Deniz"
+              placeholderTextColor={colors.muted}
+              autoCapitalize="words"
+              maxLength={24}
+              style={styles.input}
+            />
+          </Field>
+        )}
         {join ? (
           <Field label="Oda kodu">
             <TextInput
@@ -648,13 +855,12 @@ function EntryForm({
                 style={styles.input}
               />
             </Field>
-            <Capacity value={maxPlayers} set={setMaxPlayers} />
-            <RoundModeSelector value={roundMode} onChange={setRoundMode} disabled={busy} />
+            <RoomRulesEditor value={draft} onChange={setDraft} disabled={busy} />
           </>
         )}
       </View>
       <Action
-        title={busy ? 'Bağlanıyor…' : title}
+        title={busy ? 'Bağlanıyor…' : spectate ? 'Odayı izle' : title}
         onPress={enter}
         disabled={!valid || busy || !enabled}
       />
@@ -687,6 +893,7 @@ function PlayerRow({
           {mine ? ' (sen)' : ''}
         </Text>
         <Text style={[base.caption, ready && styles.ready]}>
+          {player.teamId ? `${teamLabels[player.teamId]} · ` : ''}
           {!player.connected
             ? 'Bağlantı kesildi'
             : host
@@ -719,6 +926,7 @@ function Lobby({
   setReady,
   start,
   save,
+  chooseTeam,
   leave,
 }: {
   room: RoomView;
@@ -728,17 +936,24 @@ function Lobby({
   kick: (playerId: string) => void;
   setReady: (ready: boolean) => void;
   start: () => void;
-  save: (changes: { name: string; maxPlayers: number; roundMode: RoundMode }) => Promise<void>;
+  save: (changes: OnlineRules & { name: string }) => Promise<void>;
+  chooseTeam: (teamId: TeamId) => void;
   leave: () => void;
 }) {
-  const host = room.hostId === room.playerId;
+  const host = room.viewerRole === 'player' && room.hostId === room.playerId;
   const myself = room.players.find((player) => player.id === room.playerId);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(room.name);
-  const [capacity, setCapacity] = useState(room.maxPlayers);
-  const [roundMode, setRoundMode] = useState(room.roundMode);
+  const [draft, setDraft] = useState(() => draftRules(room));
+  const rules = readRules(draft, room.players.length);
+  const teamSize = TEAM_SIZE[room.gameMode];
+  const teamCount = (teamId: TeamId) =>
+    room.players.filter((player) => player.teamId === teamId).length;
+  const enoughPlayers = teamSize
+    ? TEAM_IDS.every((teamId) => teamCount(teamId) === teamSize)
+    : room.players.length >= 2;
   const canStart =
-    room.players.length >= 2 &&
+    enoughPlayers &&
     room.players.every((player) => player.connected && (player.id === room.hostId || player.ready));
   const disabled = !enabled || busy;
 
@@ -748,8 +963,7 @@ function Lobby({
 
   function openSettings() {
     setName(room.name);
-    setCapacity(room.maxPlayers);
-    setRoundMode(room.roundMode);
+    setDraft(draftRules(room));
     setEditing(true);
   }
 
@@ -759,7 +973,11 @@ function Lobby({
         <Text accessibilityRole="header" style={base.title}>
           {room.name}
         </Text>
-        <RoundModeBadge mode={room.roundMode} />
+        <RoomRulesBadge room={room} />
+        <Text style={base.caption}>
+          {room.spectatorCount} izleyici
+          {room.viewerRole === 'spectator' ? ' · İzleyici olarak buradasın' : ''}
+        </Text>
       </View>
       <View style={[base.card, styles.inviteCard]}>
         <View>
@@ -788,6 +1006,24 @@ function Lobby({
           />
         ))}
       </View>
+      {teamSize > 0 && myself && (
+        <View style={[base.card, base.section]}>
+          <Text style={base.subtitle}>Takımını seç</Text>
+          <View style={styles.buttonRow}>
+            {TEAM_IDS.map((teamId) => (
+              <View key={teamId} style={styles.fill}>
+                <Action
+                  title={`${teamLabels[teamId]} · ${teamCount(teamId)}/${teamSize}`}
+                  variant={myself.teamId === teamId ? 'primary' : 'secondary'}
+                  disabled={disabled || myself.teamId === teamId || teamCount(teamId) >= teamSize}
+                  onPress={() => chooseTeam(teamId)}
+                  compact
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
       {host && editing && (
         <View style={[base.card, base.section]}>
           <Text style={base.subtitle}>Oda ayarları</Text>
@@ -800,8 +1036,12 @@ function Lobby({
               maxLength={40}
             />
           </Field>
-          <Capacity value={capacity} set={setCapacity} minimum={room.players.length} />
-          <RoundModeSelector value={roundMode} onChange={setRoundMode} disabled={disabled} />
+          <RoomRulesEditor
+            value={draft}
+            onChange={setDraft}
+            minimum={room.players.length}
+            disabled={disabled}
+          />
           <View style={styles.buttonRow}>
             <View style={styles.fill}>
               <Action
@@ -815,11 +1055,12 @@ function Lobby({
               <Action
                 title="Kaydet"
                 onPress={() =>
-                  void save({ name: name.trim(), maxPlayers: capacity, roundMode })
+                  rules &&
+                  void save({ name: name.trim(), ...rules })
                     .then(() => setEditing(false))
                     .catch(() => {})
                 }
-                disabled={disabled || !name.trim() || capacity < room.players.length}
+                disabled={disabled || !name.trim() || !rules}
                 compact
               />
             </View>
@@ -831,8 +1072,9 @@ function Lobby({
           <Action title="Maçı başlat" onPress={start} disabled={disabled || !canStart || editing} />
           {!canStart && (
             <Text style={base.caption}>
-              En az iki oyuncu gerekir. Oda sahibi dışındaki oyuncular hazır olduğunda maç
-              başlayabilir.
+              {teamSize
+                ? `Her takımda ${teamSize} oyuncu olmalı. Oda sahibi dışındaki oyuncular hazır olduğunda maç başlayabilir.`
+                : 'En az iki oyuncu gerekir. Oda sahibi dışındaki oyuncular hazır olduğunda maç başlayabilir.'}
             </Text>
           )}
           {!editing && (
@@ -844,14 +1086,14 @@ function Lobby({
             />
           )}
         </>
-      ) : (
+      ) : myself ? (
         <Action
-          title={myself?.ready ? 'Hazır değilim' : 'Hazırım'}
-          onPress={() => setReady(!myself?.ready)}
-          disabled={disabled || !myself}
-          variant={myself?.ready ? 'secondary' : 'primary'}
+          title={myself.ready ? 'Hazır değilim' : 'Hazırım'}
+          onPress={() => setReady(!myself.ready)}
+          disabled={disabled}
+          variant={myself.ready ? 'secondary' : 'primary'}
         />
-      )}
+      ) : null}
       <Action title="Odadan ayrıl" onPress={leave} variant="danger" disabled={disabled} />
     </View>
   );
@@ -972,10 +1214,16 @@ export function ArenaApp({
     if (!room) return;
     const url = `${serverUrl.replace(/\/+$/, '')}/room/${room.code}`;
     const best = room.players[0];
-    const message =
-      results && best
-        ? `Kelime Arenası • ${room.name}\n${best.name} maçı ${best.points.toLocaleString('tr-TR')} puanla tamamladı.\n${url}`
-        : `Kelime Arenası’nda bana katıl! Oda kodu: ${room.code}\n${url}`;
+    let message = `Kelime Arenası’nda bana katıl! Oda kodu: ${room.code}\n${url}`;
+    if (results) {
+      const teamResult = room.winnerTeamId
+        ? `${teamLabels[room.winnerTeamId]} kazandı.`
+        : 'Takımlar berabere kaldı.';
+      const individualResult = best
+        ? `${best.name} maçı ${best.points.toLocaleString('tr-TR')} puanla tamamladı.`
+        : 'Maç tamamlandı.';
+      message = `Kelime Arenası • ${room.name}\n${room.gameMode === 'ffa' ? individualResult : teamResult}\n${url}`;
+    }
     void Share.share({ message }).catch(() => setLocalError('Paylaşım açılamadı.'));
   }
 
@@ -995,7 +1243,10 @@ export function ArenaApp({
             <Text style={styles.roomHeaderTitle} numberOfLines={1}>
               {room.name}
             </Text>
-            <Text style={styles.roomHeaderCode}>Oda {room.code}</Text>
+            <Text style={styles.roomHeaderCode}>
+              Oda {room.code}
+              {room.viewerRole === 'spectator' ? ' · İzleyici' : ''}
+            </Text>
           </View>
         ) : !room && openModes ? (
           <Pressable accessibilityRole="button" onPress={openModes} style={styles.back}>
@@ -1043,6 +1294,7 @@ export function ArenaApp({
                 setReady={(ready) => run(() => send('room:player-ready', { ready }))}
                 start={() => run(() => send('game:start', {}))}
                 save={(input) => act(() => send('room:settings', input))}
+                chooseTeam={(teamId) => run(() => send('room:team', { teamId }))}
                 leave={confirmLeave}
               />
             ) : (
@@ -1061,7 +1313,7 @@ export function ArenaApp({
                   });
                 }}
                 restart={() => act(() => send('game:restart', {}))}
-                canRestart={room.hostId === room.playerId && !busy}
+                canRestart={room.viewerRole === 'player' && room.hostId === room.playerId && !busy}
                 share={() => share(true)}
                 leave={leave}
               />
@@ -1089,10 +1341,11 @@ export function ArenaApp({
               invitation={scene === 'join' ? joinCode : null}
               enabled={enabled}
               busy={busy}
-              submit={({ playerName, name, code, maxPlayers, roundMode }) =>
+              submit={({ playerName, name, code, spectate, ...rules }) =>
                 run(async () => {
-                  if (scene === 'join') await send('room:join', { playerName, code });
-                  else await send('room:create', { playerName, name, maxPlayers, roundMode });
+                  if (scene === 'create') await send('room:create', { playerName, name, ...rules });
+                  else if (spectate) await send('room:spectate', { code });
+                  else await send('room:join', { playerName, code });
                   setScene('home');
                 })
               }
@@ -1359,6 +1612,7 @@ const styles = StyleSheet.create({
   capacityText: { color: colors.ink, fontSize: 16, fontWeight: '800' },
   capacitySelectedText: { color: colors.background },
   sectionHeader: { gap: 5 },
+  ruleInvalid: { color: colors.danger },
   modeChoice: {
     minHeight: 58,
     gap: 10,

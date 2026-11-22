@@ -67,6 +67,90 @@ function expectError(operation: () => unknown, code: string) {
   assert.throws(operation, (error: unknown) => error instanceof ArenaError && error.code === code);
 }
 
+test('room rules support up to ten distinct rounds, custom time, and limits', () => {
+  const pool = [...testAnswers, 'KİTAP', 'MASAL', 'LİMON', 'LOKMA', 'BALIK'];
+  const { arena, clock, events, host, guest, start } = fixture(pool, [knownWrong]);
+  expectError(() => arena.settings(host, { roundCount: 2 }), 'ROUND_COUNT');
+  expectError(() => arena.settings(host, { roundCount: 11 }), 'ROUND_COUNT');
+  expectError(() => arena.settings(host, { roundSeconds: 301 }), 'ROUND_SECONDS');
+
+  arena.ready(guest, true);
+  arena.settings(host, { roundCount: 10, roundSeconds: 45, maxPlayers: 3 });
+  assert.equal(arena.snapshot(guest).players.find(player => player.id === guest.playerId)?.ready, false);
+  assert.equal(arena.snapshot(host).maxPlayers, 3);
+  start();
+
+  for (let round = 1; round <= 10; round++) {
+    const playing = arena.snapshot(host);
+    assert.equal(playing.round, round);
+    assert.equal(playing.roundCount, 10);
+    assert.equal(playing.roundSeconds, 45);
+    assert.equal(playing.deadline, clock.now() + 45_000);
+    assert.equal(playing.roundAnalyses.length, round - 1);
+    assert.equal(playing.answer, null);
+    clock.advance(45_000 + INTERMISSION_MS);
+  }
+
+  const result = arena.snapshot(host);
+  assert.equal(result.phase, 'finished');
+  assert.equal(new Set(result.roundAnalyses.map(round => round.answer)).size, 10);
+  assert.ok(result.roundAnalyses.every(round => round.players.every(player =>
+    player.status === 'timeout' && player.elapsedMs === 45_000 && player.attempts === 0,
+  )));
+  assert.equal(events.filter(event => event.type === 'round:end').length, 10);
+});
+
+for (const { gameMode, count } of [{ gameMode: '2v2', count: 4 }, { gameMode: '3v3', count: 6 }] as const) {
+  test(`${gameMode} requires full teams and calculates the winner and per-word results`, () => {
+    const game = fixture(testAnswers, [knownWrong], { gameMode, roundCount: 3, roundSeconds: 60 });
+    const { arena, host, guest, clock, events, submit } = game;
+    assert.equal(arena.snapshot(host).maxPlayers, count);
+    arena.ready(guest, true);
+    arena.selectTeam(guest, 'a');
+    assert.equal(arena.snapshot(host).players.find(player => player.id === guest.playerId)?.ready, false);
+    expectError(() => arena.start(host), 'UNBALANCED_TEAMS');
+    const roster = [host, guest];
+    for (let index = 2; index < count; index++) {
+      roster.push(arena.join({ name: `Oyuncu ${index}`, code: host.code }));
+    }
+    expectError(() => arena.join({ name: 'Fazladan', code: host.code }), 'ROOM_FULL');
+    for (const player of roster.slice(1)) arena.ready(player, true);
+    arena.start(host);
+    clock.advance(COUNTDOWN_MS);
+    expectError(() => arena.selectTeam(guest, 'b'), 'MATCH_ACTIVE');
+
+    for (let round = 1; round <= 3; round++) {
+      clock.advance(30_000);
+      for (const candidate of testAnswers) {
+        if (submit(host, candidate).marks.every(mark => mark === 'correct')) break;
+      }
+      const running = arena.snapshot(guest);
+      assert.equal(running.finalCountdown, true);
+      assert.equal(running.winnerTeamId, null);
+      const solver = running.players.find(player => player.id === host.playerId)!;
+      assert.equal(solver.roundSolved, true);
+      assert.equal(solver.roundPoints, 650 + (5 - solver.roundAttempts) * 50);
+      assert.equal(running.teams.find(team => team.id === 'a')?.roundPoints, solver.roundPoints);
+      assert.deepEqual(running.guesses, []);
+      clock.advance(FINAL_GUESS_MS);
+      const summary = arena.snapshot(guest).roundAnalyses.at(-1)!;
+      const answerResult = summary.players.find(player => player.playerId === host.playerId)!;
+      assert.equal(answerResult.teamId, 'a');
+      assert.equal(answerResult.elapsedMs, 30_000);
+      assert.equal(answerResult.solveMs, 30_000);
+      assert.equal(answerResult.attempts, solver.roundAttempts);
+      assert.equal(answerResult.points, solver.roundPoints);
+      clock.advance(INTERMISSION_MS);
+    }
+    const final = arena.snapshot(guest);
+    assert.equal(final.phase, 'finished');
+    assert.equal(final.winnerTeamId, 'a');
+    assert.equal(final.teams[0].rank, 1);
+    assert.equal(final.teams[0].solved, 3);
+    assert.equal(events.find(event => event.type === 'match:end')?.winnerTeamId, 'a');
+  });
+}
+
 test('a dictionary needs at least five distinct valid answer words', () => {
   const accepted = new Set(testAnswers);
   assert.throws(() => new Arena({ answers: [...testAnswers.slice(0, 4), testAnswers[0]], accepted }));

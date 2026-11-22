@@ -95,6 +95,14 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
   const lobby = snapshot(ada, room => room.players.length === 2);
   const guest = successful(await request(deniz, "room:join", { playerName: "Deniz", code: owner.room.code }));
   await lobby;
+  let spectator = await connect();
+  const viewing = successful(await request(spectator, "room:spectate", { code: owner.room.code }));
+  assert.equal(viewing.room.viewerRole, "spectator");
+  assert.equal(viewing.room.spectatorCount, 1);
+  assert.equal(viewing.room.players.length, 2);
+  assert.equal((await request(spectator, "room:player-ready", { ready: true })).ok, false);
+  assert.equal((await request(spectator, "game:start", {})).ok, false);
+  assert.equal((await request(spectator, "room:team", { teamId: "a" })).ok, false);
   assert.equal((await request(deniz, "game:start", {})).ok, false);
   assert.equal((await request(ada, "game:start", {})).ok, false);
   successful(await request(deniz, "room:player-ready", { ready: true }));
@@ -120,11 +128,25 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
 
     if (round === 1) {
       const privateGuess = { matchId: a.matchId, round, requestId: "ada-retry-1", word: misses[0] };
+      const spectatorProgress = snapshot(spectator, room =>
+        room.players.some(player => player.id === a.playerId && player.roundAttempts === 1),
+      );
+      assert.equal((await request(spectator, "game:submit-guess", privateGuess)).ok, false);
       const [first] = await Promise.all([
         request(ada, "game:submit-guess", privateGuess),
         request(deniz, "game:submit-guess", { ...privateGuess, requestId: "deniz-own-1", word: misses[1] }),
       ]);
       successful(first);
+      const watched = await spectatorProgress;
+      assert.equal(watched.answer, null);
+      assert.equal(watched.roundAnalyses.length, 0);
+      assert.deepEqual(watched.guesses, []);
+      assert.ok(!JSON.stringify(watched).includes(misses[0]));
+      spectator.disconnect();
+      spectator = await connect();
+      const restored = successful(await request(spectator, "room:resume", { code: a.code, token: viewing.token }));
+      assert.equal(restored.room.viewerRole, "spectator");
+      assert.equal(restored.room.playerId, viewing.room.playerId);
       const disconnected = snapshot(deniz, room => room.players.some(player => player.id === a.playerId && !player.connected));
       ada.disconnect();
       await disconnected;
@@ -157,6 +179,7 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
       assert.ok(!revealed.has(summary.answer));
       assert.deepEqual(summary.guesses, []);
       assert.ok(summary.players.find(player => player.id === a.playerId)!.roundPoints > 0);
+      assert.equal(summary.roundAnalyses.length, round);
       revealed.add(summary.answer);
       continue;
     }
@@ -174,9 +197,11 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
   assert.equal(revealed.size, 5);
   assert.equal(result.players[0].id, owner.room.playerId);
   assert.equal(result.players[0].solved, 4);
+  assert.equal(result.roundAnalyses.length, 5);
   assert.deepEqual(guestGuesses, [misses[1]]);
   assert.equal(persisted.filter(event => event.type === "round:end").length, 5);
   assert.equal(persisted.filter(event => event.type === "match:end").length, 1);
+  assert.equal(persisted.filter(event => event.type === "session:save").length, 2);
   ada.disconnect();
   ada = await connect();
   successful(await request(ada, "room:resume", { code: owner.room.code, token: owner.token }));
@@ -196,4 +221,5 @@ test("two Socket.IO clients complete five private rounds, reconnect, and rematch
   assert.equal((await request(ada, "game:submit-guess", {
     matchId: firstRound!.matchId!, round: 1, requestId: "ada-retry-1", word: misses[0],
   })).ok, false);
+  successful(await request(spectator, "room:leave", {}));
 });

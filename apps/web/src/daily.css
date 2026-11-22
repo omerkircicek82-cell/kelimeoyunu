@@ -1,0 +1,72 @@
+.daily-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+.daily-heading h1 {
+  font-size: clamp(25px, 5vw, 41px);
+  font-weight: 875;
+  letter-spacing: -0.045em;
+}
+.daily-heading p,
+.daily-card p {
+  color: var(--arena-muted);
+  font-size: 14px;
+}
+.daily-main,
+.daily-card {
+  display: grid;
+  gap: 10px;
+}
+.daily-card {
+  justify-items: start;
+  padding: 15px;
+  min-width: 0;
+}
+.daily-card .table-scroll,
+.daily-rank-heading {
+  width: 100%;
+}
+.daily-rank-heading,
+.daily-rank-heading h2,
+.daily-round-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.daily-rank-heading,
+.daily-round-heading {
+  justify-content: space-between;
+}
+.daily-rank-heading svg,
+.daily-round-heading strong,
+.daily-card strong {
+  color: var(--arena-lime);
+}
+.daily-rank-heading .button {
+  min-height: 36px;
+}
+.daily-own-rank {
+  background: var(--subtle);
+}
+.daily-own-rank small {
+  margin-left: 4px;
+  color: var(--arena-purple);
+}
+.daily-answers {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+}
+.daily-answers li {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 6px;
+  border-bottom: 1px solid var(--arena-line);
+  font-size: 13px;
+}
+.daily-answers span {
+  color: var(--arena-muted);
+}

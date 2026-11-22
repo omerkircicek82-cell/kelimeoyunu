@@ -43,6 +43,9 @@ model GameRoom {
   name         String
   maxPlayers   Int
   roundMode    RoundMode         @default(timed)
+  gameMode     String            @default("ffa")
+  roundCount   Int               @default(5)
+  roundSeconds Int               @default(90)
   hostId       String
   host         Player            @relation(fields: [hostId], references: [id])
   createdAt    DateTime          @default(now())
@@ -68,6 +71,11 @@ model GameMatch {
   roomId    String
   room      GameRoom      @relation(fields: [roomId], references: [id])
   roundMode RoundMode     @default(timed)
+  gameMode  String        @default("ffa")
+  roundCount Int          @default(5)
+  roundSeconds Int        @default(90)
+  winnerTeamId String?
+  teamResults Json?
   createdAt DateTime      @default(now())
   endedAt   DateTime?
   rounds    GameRound[]
@@ -112,6 +120,8 @@ model RoundPlayerResult {
   points    Int
   attempts  Int
   solveMs   Int?
+  elapsedMs Int?
+  teamId    String?
 
   @@id([roundId, playerId])
 }
@@ -128,6 +138,7 @@ model MatchResult {
   attempts  Int
   fastestMs Int?
   fastestWord String?
+  teamId      String?
 
   @@id([matchId, playerId])
 }
@@ -143,12 +154,17 @@ model Account {
   passwordHash String
   rating       Int              @default(1000)
   ratedGames   Int              @default(0)
+  wins         Int              @default(0)
+  winStreak    Int              @default(0)
+  bestWinStreak Int             @default(0)
+  peakRating   Int              @default(1000)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   sessions     AccountSession[]
   ratingEvents RatingEvent[]
   tickets      SoloChallenge[]
   players      Player[]
+  dailyAttempts DailyAttempt[]
 
   @@index([rating(sort: Desc), username])
 }
@@ -186,4 +202,29 @@ model SoloChallenge {
   createdAt DateTime @default(now())
 
   @@index([accountId, playedAt, expiresAt])
+}
+
+model DailyChallenge {
+  date      String         @id
+  words     String[]
+  createdAt DateTime       @default(now())
+  attempts  DailyAttempt[]
+}
+
+model DailyAttempt {
+  date        String
+  accountId   String
+  challenge   DailyChallenge @relation(fields: [date], references: [date])
+  account     Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  round       Int            @default(1)
+  version     Int            @default(0)
+  rounds      Json
+  solved      Int            @default(0)
+  points      Int            @default(0)
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@id([date, accountId])
+  @@index([date, solved(sort: Desc), points(sort: Desc)])
 }

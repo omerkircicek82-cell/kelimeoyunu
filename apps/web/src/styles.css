@@ -1421,3 +1421,115 @@ h2 {
 .solo-mode-status {
   color: var(--arena-muted);
 }
+
+.lobby-team-switch,
+.team-scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 10px;
+}
+
+.lobby-team-switch [aria-pressed='true'] {
+  border-color: var(--arena-purple);
+}
+
+.team-a {
+  --team-color: var(--arena-purple);
+}
+.team-b {
+  --team-color: var(--arena-lime);
+}
+.lobby-team-switch .button,
+.player-name .team-a,
+.player-name .team-b,
+.score-person .team-a,
+.score-person .team-b,
+.result-team {
+  color: var(--team-color);
+}
+
+.team-scores > li {
+  display: flex;
+  flex: 1 1 100px;
+  flex-direction: column;
+  padding: 7px 8px;
+  border: 1px solid var(--arena-line);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.team-scores strong {
+  color: var(--team-color);
+}
+.team-scores span {
+  color: var(--arena-muted);
+}
+
+.lobby-invite > .button + .button {
+  margin-top: 7px;
+}
+
+.opponent-progress {
+  display: flex;
+  gap: 3px;
+  width: min(100%, 100px);
+  margin-top: 3px;
+}
+
+.opponent-progress > span {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--arena-line);
+}
+
+.opponent-progress .progress-filled {
+  background: var(--arena-purple);
+}
+
+.opponent-progress.progress-solved .progress-filled {
+  background: var(--arena-lime);
+}
+
+.spectator-panel {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  min-height: 200px;
+  align-content: center;
+  padding: 15px;
+  text-align: center;
+}
+
+.spectator-panel p {
+  color: var(--arena-muted);
+}
+
+.result-team {
+  display: block;
+  font-size: 11px;
+}
+
+.match-analysis {
+  display: grid;
+  gap: 6px;
+  margin-top: 15px;
+}
+.match-analysis details {
+  padding: 8px;
+  border: 1px solid var(--arena-line);
+  border-radius: 8px;
+}
+.match-analysis summary {
+  cursor: pointer;
+}
+.match-analysis summary strong {
+  margin-inline: 6px;
+}
+.match-analysis summary span {
+  color: var(--arena-muted);
+}
+.match-analysis .table-scroll {
+  margin-top: 6px;
+}

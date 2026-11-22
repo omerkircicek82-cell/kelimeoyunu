@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 're
 import { ArrowRight, DoorOpen, Infinity, Link2, Lock, Timer, WifiOff } from 'lucide-react';
 import { ROUND_MS, type RoundMode, type SoloChallengeTicket } from '@arena/shared';
 import { attachConnection, forgetTicket, hasRoomTicket, request, useArena } from './connection';
-import { Countdown, GameRound, MatchResults, RoundResults } from './Game';
+import { Countdown, GameRound, MatchResults, RoundResults, SpectatorRound } from './Game';
 import { Landing } from './Landing';
 import { Lobby, RoomHeading } from './Lobby';
 import { useMembership } from './membership';
@@ -14,8 +14,11 @@ import { Header, Help, loadPreferences, Modal, type Preferences } from './ui';
 
 type Overlay = EntryMode | 'help' | 'profile' | 'leave';
 type SoloRun = { key: number; mode: RoundMode; challenge?: SoloChallengeTicket; accountId?: string };
-const AccountPanel = lazy(() => import('./Member').then(module => ({ default: module.AccountPanel })));
-const LeaderboardPage = lazy(() => import('./Member').then(module => ({ default: module.LeaderboardPage })));
+const DailyPage = lazy(() => import('./Daily').then((module) => ({ default: module.DailyPage })));
+const AccountPanel = lazy(() => import('./Member').then((module) => ({ default: module.AccountPanel })));
+const LeaderboardPage = lazy(() =>
+  import('./Member').then((module) => ({ default: module.LeaderboardPage })),
+);
 
 export function App() {
   const { room, connected, recovering, notice } = useArena();
@@ -35,9 +38,10 @@ export function App() {
   const location = useLocation();
   const enabled = connected && !recovering && !accountPending;
 
-  useEffect(() => attachConnection(session?.token, profile?.id, invalidate), [
-    session?.token, profile?.id, invalidate,
-  ]);
+  useEffect(
+    () => attachConnection(session?.token, profile?.id, invalidate),
+    [session?.token, profile?.id, invalidate],
+  );
   useEffect(() => {
     if (!session?.token || (room?.phase !== 'intermission' && room?.phase !== 'finished')) return;
     const timer = setTimeout(() => void refresh(), 500);
@@ -75,7 +79,11 @@ export function App() {
     else navigate('/');
   }
 
-  function open(mode: EntryMode | 'help' | 'offline') {
+  function open(mode: EntryMode | 'help' | 'offline' | 'daily') {
+    if (mode === 'daily') {
+      navigate('/gunluk');
+      return;
+    }
     if (mode === 'offline') {
       setSoloRun(null);
       navigate('/cevrimdisi');
@@ -167,14 +175,18 @@ export function App() {
                 mode={soloRun.mode}
                 challenge={soloRun.challenge}
                 preferences={preferences}
-                onComplete={result => { if (soloRun.accountId) offline.record(result, soloRun.accountId); }}
+                onComplete={(result) => {
+                  if (soloRun.accountId) offline.record(result, soloRun.accountId);
+                }}
                 onBack={() => setSoloRun(null)}
                 onPlayAgain={() => startSolo(soloRun.mode)}
               />
             ) : (
               <main className="site-width room-page">
                 <section className="panel standalone solo-mode-picker">
-                  <span className="result-icon"><WifiOff size={22} aria-hidden="true" /></span>
+                  <span className="result-icon">
+                    <WifiOff size={22} aria-hidden="true" />
+                  </span>
                   <h1>Çevrimdışı oyna</h1>
                   <p>Tek kelime, beş tahmin hakkı.</p>
                   <div className="solo-mode-actions">
@@ -192,13 +204,27 @@ export function App() {
                         ? 'Puanlı bilet gelene kadar antrenman oynayabilirsin.'
                         : 'Misafir antrenmanı. Genel puan için hesabına giriş yap.'}
                   </p>
-                  {profile && offline.pending > 0 && <p role="status">{offline.pending} sonuç eşitlenmeyi bekliyor.</p>}
-                  {profile && offline.notice && <p role="alert" className="form-error">{offline.notice}</p>}
+                  {profile && offline.pending > 0 && (
+                    <p role="status">{offline.pending} sonuç eşitlenmeyi bekliyor.</p>
+                  )}
+                  {profile && offline.notice && (
+                    <p role="alert" className="form-error">
+                      {offline.notice}
+                    </p>
+                  )}
                   <div className="button-group">
-                    {profile
-                      ? <button className="button button-quiet" onClick={() => void offline.sync()}>Eşitle</button>
-                      : <button className="button button-quiet" onClick={openAccount}>Giriş / Kayıt</button>}
-                    <button className="button button-quiet" onClick={() => navigate('/')}>Ana menüye dön</button>
+                    {profile ? (
+                      <button className="button button-quiet" onClick={() => void offline.sync()}>
+                        Eşitle
+                      </button>
+                    ) : (
+                      <button className="button button-quiet" onClick={openAccount}>
+                        Giriş / Kayıt
+                      </button>
+                    )}
+                    <button className="button button-quiet" onClick={() => navigate('/')}>
+                      Ana menüye dön
+                    </button>
                   </div>
                 </section>
               </main>
@@ -206,9 +232,36 @@ export function App() {
           }
         />
         <Route
+          path="/gunluk"
+          element={
+            <Suspense
+              fallback={
+                <p className="site-width room-page" role="status">
+                  Günlük mücadele yükleniyor…
+                </p>
+              }
+            >
+              <DailyPage
+                key={profile?.id ?? 'guest'}
+                token={session?.token}
+                username={profile?.username}
+                preferences={preferences}
+                onAccount={openAccount}
+                onHome={() => navigate(room ? `/room/${room.code}` : '/')}
+              />
+            </Suspense>
+          }
+        />
+        <Route
           path="/siralama"
           element={
-            <Suspense fallback={<main className="site-width room-page" role="status">Sıralama yükleniyor…</main>}>
+            <Suspense
+              fallback={
+                <main className="site-width room-page" role="status">
+                  Sıralama yükleniyor…
+                </main>
+              }
+            >
               <LeaderboardPage
                 profile={profile}
                 loadEntries={loadEntries}
@@ -328,6 +381,7 @@ function RoomRoute({
 }) {
   const room = useArena((state) => state.room);
   const { code } = useParams<{ code: string }>();
+  const watchOnly = new URLSearchParams(useLocation().search).get('izle') === '1';
   const navigate = useNavigate();
   const [finishedLobby, setFinishedLobby] = useState(false);
 
@@ -369,7 +423,15 @@ function RoomRoute({
               Açık odana dön
             </button>
           ) : (
-            <RoomForm key={invite} mode="join" inviteCode={invite} accountName={accountName} entered={enter} enabled={enabled} />
+            <RoomForm
+              key={`${invite}-${watchOnly}`}
+              mode="join"
+              inviteCode={invite}
+              watchOnly={watchOnly}
+              accountName={accountName}
+              entered={enter}
+              enabled={enabled}
+            />
           )}
         </section>
       </main>
@@ -390,14 +452,17 @@ function RoomRoute({
       )}
       {room.phase === 'lobby' && <Lobby room={room} enabled={enabled} notify={notify} />}
       {room.phase === 'countdown' && <Countdown room={room} />}
-      {room.phase === 'round' && (
-        <GameRound
-          key={`${room.matchId}-${room.round}`}
-          room={room}
-          enabled={enabled}
-          preferences={preferences}
-        />
-      )}
+      {room.phase === 'round' &&
+        (room.viewerRole === 'spectator' ? (
+          <SpectatorRound room={room} />
+        ) : (
+          <GameRound
+            key={`${room.matchId}-${room.round}`}
+            room={room}
+            enabled={enabled}
+            preferences={preferences}
+          />
+        ))}
       {room.phase === 'intermission' && <RoundResults key={room.round} room={room} />}
       {room.phase === 'finished' &&
         (finishedLobby ? (

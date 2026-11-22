@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import type { AccountProfile, AuthReply, LeaderboardEntry, SoloChallengeTicket, SoloResultRequest } from "@arena/shared";
+import type {
+  AccountProfile, AuthReply, DailyState, LeaderboardEntry, LeagueId, SoloChallengeTicket, SoloResultRequest,
+} from "@arena/shared";
 
 type Session = AuthReply & { serverUrl: string };
 type Credentials = { username: string; password: string };
@@ -11,7 +13,7 @@ const sessionKey = "arena.member";
 const emptyCache: Cache = { tickets: [], pending: [] };
 let writes = Promise.resolve();
 
-class RequestError extends Error {
+export class RequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
@@ -192,14 +194,31 @@ export function useMembership(serverUrl: string | null) {
     void sync();
   }
 
-  async function loadEntries() {
+  async function loadEntries(league?: LeagueId) {
     if (!serverUrl) throw new Error("Lider tablosunu görmek için bir sunucuya bağlan.");
     await sync();
-    return (await api<{ entries: LeaderboardEntry[] }>(serverUrl, "leaderboard", current.current?.token)).entries;
+    const path = league ? `leaderboard?league=${league}` : "leaderboard";
+    return (await api<{ entries: LeaderboardEntry[] }>(serverUrl, path, current.current?.token)).entries;
+  }
+
+  async function dailyRequest(path: string, body?: object) {
+    const value = current.current;
+    if (!value) throw new Error("Günlük mücadele için hesabına giriş yap.");
+    try {
+      return await api<DailyState>(value.serverUrl, path, value.token, body);
+    } catch (error) {
+      if (error instanceof RequestError && error.status === 401) void sync();
+      throw error;
+    }
   }
 
   return {
     ready, session, pending: cache.pending.length, syncNotice, authenticate, logout, loadEntries, recordSolo, sync,
     availableTicket: cache.tickets.find(ticket => ticket.expiresAt > Date.now()),
+    loadDaily: () => dailyRequest("daily"),
+    startDaily: (date: string) => dailyRequest("daily/start", { date }),
+    guessDaily: (date: string, round: number, requestId: string, word: string) =>
+      dailyRequest("daily/guess", { date, round, requestId, word }),
+    nextDaily: (date: string, round: number) => dailyRequest("daily/next", { date, round }),
   };
 }

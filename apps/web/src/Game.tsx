@@ -6,6 +6,7 @@ import {
   Clock3,
   CornerDownLeft,
   Delete,
+  Eye,
   Infinity,
   Medal,
   Radio,
@@ -18,8 +19,6 @@ import {
   FINAL_GUESS_MS,
   MAX_ATTEMPTS,
   normalizeWord,
-  ROUND_COUNT,
-  ROUND_MS,
   TURKISH_ALPHABET,
   WORD_LENGTH,
   type Guess,
@@ -28,6 +27,7 @@ import {
   type RoomView,
 } from '@arena/shared';
 import { request, RequestError, useArena } from './connection';
+import { teamLabel } from './RoomRules';
 import { Avatar, MarkIcon, markLabel, playSound, roundModeLabel, ShareButton, type Preferences } from './ui';
 
 const numberFormat = new Intl.NumberFormat('tr-TR');
@@ -122,7 +122,7 @@ export function GameRound({
   preferences: Preferences;
 }) {
   const remaining = useRemaining(room);
-  const timerDuration = room.finalCountdown ? FINAL_GUESS_MS : ROUND_MS;
+  const timerDuration = room.finalCountdown ? FINAL_GUESS_MS : room.roundSeconds * 1000;
   const mine = room.players.find((player) => player.id === room.playerId);
   const solved = mine?.status === 'solved';
   const playable =
@@ -233,13 +233,7 @@ export function GameRound({
     return () => window.removeEventListener('keydown', pressed);
   }, [key, playable]);
 
-  const marks: Record<string, Mark> = {};
-  for (const guess of room.guesses) {
-    Array.from(guess.word).forEach((letter, index) => {
-      const mark = guess.marks[index];
-      if (!marks[letter] || improvement[mark] > improvement[marks[letter]]) marks[letter] = mark;
-    });
-  }
+  const marks = guessKeyMarks(room.guesses);
 
   return (
     <div className="game-grid">
@@ -248,7 +242,7 @@ export function GameRound({
           <div className="round-label">
             <span>Tur</span>
             <strong>
-              {room.round} <small>/ {ROUND_COUNT}</small>
+              {room.round} <small>/ {room.roundCount}</small>
             </strong>
           </div>
           <TimerDisplay remaining={remaining} finalCountdown={room.finalCountdown} />
@@ -308,59 +302,96 @@ export function GameRound({
               `${MAX_ATTEMPTS - room.guesses.length} tahmin hakkın kaldı`
             ))}
         </div>
-        <div
-          className="keyboard"
-          aria-label="Türkçe ekran klavyesi"
-          onMouseDown={(event) => event.preventDefault()}
-        >
-          {keyboardRows.map((row, index) => (
-            <div className="keyboard-row" key={row}>
-              {index === 2 && (
-                <button
-                  type="button"
-                  className="game-key command-key"
-                  aria-label="Tahmini gönder"
-                  disabled={!playable || submitting}
-                  onClick={() => void key('Enter')}
-                >
-                  <CornerDownLeft size={16} />
-                  <span>Enter</span>
-                </button>
-              )}
-              {Array.from(row).map((letter) => (
-                <button
-                  type="button"
-                  key={letter}
-                  className={`game-key ${marks[letter] ? `mark-${marks[letter]}` : ''}`}
-                  aria-label={marks[letter] ? `${letter}, ${markLabel(marks[letter])}` : letter}
-                  disabled={!playable || submitting}
-                  onClick={() => void key(letter)}
-                >
-                  {letter}
-                  {marks[letter] && preferences.symbols && <MarkIcon mark={marks[letter]} />}
-                </button>
-              ))}
-              {index === 2 && (
-                <button
-                  type="button"
-                  className="game-key command-key"
-                  aria-label="Son harfi sil"
-                  disabled={!playable || submitting}
-                  onClick={() => void key('Backspace')}
-                >
-                  <Delete size={19} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+        <ArenaKeys
+          disabled={!playable || submitting}
+          marks={marks}
+          symbols={preferences.symbols}
+          onKey={(input) => void key(input)}
+        />
       </section>
       <Scoreboard room={room} />
     </div>
   );
 }
 
-function GuessRow({
+export function guessKeyMarks(guesses: readonly Guess[]) {
+  const marks: Partial<Record<string, Mark>> = {};
+  for (const guess of guesses) {
+    Array.from(guess.word).forEach((letter, index) => {
+      const mark = guess.marks[index];
+      const previous = marks[letter];
+      if (!previous || improvement[mark] > improvement[previous]) marks[letter] = mark;
+    });
+  }
+
+  return marks;
+}
+
+export function ArenaKeys({
+  disabled,
+  marks,
+  symbols,
+  onKey,
+}: {
+  disabled: boolean;
+  marks: Partial<Record<string, Mark>>;
+  symbols: boolean;
+  onKey: (value: string) => void;
+}) {
+  return (
+    <div
+      className="keyboard"
+      aria-label="Türkçe ekran klavyesi"
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      {keyboardRows.map((row, index) => (
+        <div className="keyboard-row" key={row}>
+          {index === 2 && (
+            <button
+              type="button"
+              className="game-key command-key"
+              aria-label="Tahmini gönder"
+              disabled={disabled}
+              onClick={() => onKey('Enter')}
+            >
+              <CornerDownLeft size={16} />
+              <span>Enter</span>
+            </button>
+          )}
+          {Array.from(row).map((letter) => {
+            const mark = marks[letter];
+            return (
+              <button
+                type="button"
+                key={letter}
+                className={`game-key ${mark ? `mark-${mark}` : ''}`}
+                aria-label={mark ? `${letter}, ${markLabel(mark)}` : letter}
+                disabled={disabled}
+                onClick={() => onKey(letter)}
+              >
+                {letter}
+                {mark && symbols && <MarkIcon mark={mark} />}
+              </button>
+            );
+          })}
+          {index === 2 && (
+            <button
+              type="button"
+              className="game-key command-key"
+              aria-label="Son harfi sil"
+              disabled={disabled}
+              onClick={() => onKey('Backspace')}
+            >
+              <Delete size={19} />
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function GuessRow({
   guess,
   draft,
   active,
@@ -405,8 +436,42 @@ function GuessRow({
   );
 }
 
+function TeamScores({ room }: { room: RoomView }) {
+  if (room.teams.length === 0) return null;
+  return (
+    <ul className="team-scores" aria-label="Takım sıralaması">
+      {room.teams.map((team) => (
+        <li key={team.id} className={`team-${team.id}`}>
+          <strong>{teamLabel[team.id]}</strong>
+          <span>{number(team.points)} puan</span>
+          {room.phase === 'intermission' && <span>Bu tur +{number(team.roundPoints)}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function SpectatorRound({ room }: { room: RoomView }) {
+  const remaining = useRemaining(room);
+  return (
+    <div className="game-grid">
+      <section className="panel spectator-panel">
+        <span className="result-icon">
+          <Eye size={21} aria-hidden="true" />
+        </span>
+        <h2>İzleyici modu</h2>
+        <p>
+          Tur {room.round} / {room.roundCount}
+        </p>
+        <TimerDisplay remaining={remaining} finalCountdown={room.finalCountdown} />
+      </section>
+      <Scoreboard room={room} />
+    </div>
+  );
+}
+
 function Scoreboard({ room }: { room: RoomView }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(room.viewerRole === 'spectator');
   return (
     <aside className={`panel scoreboard ${open ? 'scoreboard-open' : ''}`}>
       <div className="panel-heading score-heading">
@@ -420,6 +485,7 @@ function Scoreboard({ room }: { room: RoomView }) {
       <button type="button" className="score-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
         <UsersRound size={18} /> Canlı sıralama <ChevronDown size={18} />
       </button>
+      <TeamScores room={room} />
       <ol className="score-list">
         {room.players.map((player) => (
           <motion.li
@@ -432,11 +498,33 @@ function Scoreboard({ room }: { room: RoomView }) {
             <div className="score-person">
               <strong>
                 {player.name}
+                {player.teamId && (
+                  <small className={`team-${player.teamId}`}>{teamLabel[player.teamId]}</small>
+                )}
                 {player.id === room.playerId && <small>Sen</small>}
               </strong>
               <span className={`status-${player.status}`}>
                 {player.connected ? statusLabel[player.status] : 'Bağlantı kesildi'}
               </span>
+              {room.phase === 'round' && (
+                <div
+                  className={`opponent-progress ${player.roundSolved ? 'progress-solved' : ''}`}
+                  role="progressbar"
+                  aria-label={`${player.name} tahmin ilerlemesi`}
+                  aria-valuemin={0}
+                  aria-valuemax={MAX_ATTEMPTS}
+                  aria-valuenow={player.roundAttempts}
+                  aria-valuetext={`${player.roundAttempts}/${MAX_ATTEMPTS} tahmin`}
+                >
+                  {Array.from({ length: MAX_ATTEMPTS }, (_, index) => (
+                    <span
+                      key={index}
+                      className={index < player.roundAttempts ? 'progress-filled' : undefined}
+                      aria-hidden="true"
+                    />
+                  ))}
+                </div>
+              )}
             </div>
             <strong className="score-number">{number(player.points)}</strong>
           </motion.li>
@@ -450,6 +538,7 @@ export function RoundResults({ room }: { room: RoomView }) {
   const remaining = useRemaining(room);
   const nobodySolved = room.players.every((player) => player.roundSolveMs === null);
   const awardedCloseness = room.players.some((player) => player.roundCloseness);
+  const analysis = room.roundAnalyses.find((entry) => entry.round === room.round);
   return (
     <div className="game-grid">
       <section className="panel result-panel">
@@ -491,7 +580,12 @@ export function RoundResults({ room }: { room: RoomView }) {
               {room.players.map((player) => (
                 <tr key={player.id}>
                   <th scope="row">{player.name}</th>
-                  <td>{seconds(player.roundSolveMs)}</td>
+                  <td>
+                    {seconds(
+                      analysis?.players.find((entry) => entry.playerId === player.id)?.elapsedMs ??
+                        player.roundSolveMs,
+                    )}
+                  </td>
                   <td>{player.roundAttempts}</td>
                   <td className="result-points">
                     <motion.span initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
@@ -518,7 +612,7 @@ export function RoundResults({ room }: { room: RoomView }) {
           </table>
         </div>
         <p className="round-next">
-          <Clock3 size={17} /> {room.round < ROUND_COUNT ? 'Sonraki tur' : 'Maç sonucu'}{' '}
+          <Clock3 size={17} /> {room.round < room.roundCount ? 'Sonraki tur' : 'Maç sonucu'}{' '}
           <strong>{Math.ceil((remaining ?? 0) / 1000)} sn</strong>
         </p>
       </section>
@@ -556,34 +650,49 @@ export function MatchResults({
   const [busy, setBusy] = useState(false);
   const winners = room.players.filter((player) => player.rank === 1);
   const podium = room.players.filter((player) => player.rank <= 3);
-  const host = room.hostId === room.playerId;
+  const spectator = room.viewerRole === 'spectator';
+  const teamMatch = room.gameMode !== 'ffa';
+  const host = !spectator && room.hostId === room.playerId;
   const mine = room.players.find((player) => player.id === room.playerId);
-  const winnerText = winners.map((player) => player.name).join(', ');
+  const winnerText = teamMatch
+    ? room.winnerTeamId
+      ? teamLabel[room.winnerTeamId]
+      : 'Takımlar berabere'
+    : winners.map((player) => player.name).join(', ');
+  const celebrate = teamMatch
+    ? Boolean(room.winnerTeamId && mine?.teamId === room.winnerTeamId)
+    : mine?.rank === 1;
   return (
     <section className="panel match-panel">
-      {mine?.rank === 1 && <Confetti />}
+      {celebrate && <Confetti />}
       <div className="match-title">
         <Trophy size={34} />
-        <h2>Arena {winners.length > 1 ? 'Şampiyonları!' : 'Şampiyonu!'}</h2>
+        <h2>
+          {teamMatch ? 'Takım maçı sonucu' : winners.length > 1 ? 'Arena Şampiyonları!' : 'Arena Şampiyonu!'}
+        </h2>
         <p>{winnerText}</p>
       </div>
-      <div className="podium" aria-label="Dereceye giren oyuncular">
-        {podium.map((player) => (
-          <motion.article
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            key={player.id}
-            className={`podium-card podium-rank-${player.rank}`}
-          >
-            <Avatar name={player.name} id={player.id} />
-            <strong className="podium-name">{player.name}</strong>
-            <span>{number(player.points)} puan</span>
-            <div className="podium-platform">
-              {player.rank === 1 ? <Trophy size={21} /> : <Medal size={21} />} {player.rank}.
-            </div>
-          </motion.article>
-        ))}
-      </div>
+      {teamMatch ? (
+        <TeamScores room={room} />
+      ) : (
+        <div className="podium" aria-label="Dereceye giren oyuncular">
+          {podium.map((player) => (
+            <motion.article
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              key={player.id}
+              className={`podium-card podium-rank-${player.rank}`}
+            >
+              <Avatar name={player.name} id={player.id} />
+              <strong className="podium-name">{player.name}</strong>
+              <span>{number(player.points)} puan</span>
+              <div className="podium-platform">
+                {player.rank === 1 ? <Trophy size={21} /> : <Medal size={21} />} {player.rank}.
+              </div>
+            </motion.article>
+          ))}
+        </div>
+      )}
       <div className="table-scroll">
         <table className="results-table final-table">
           <thead>
@@ -601,13 +710,18 @@ export function MatchResults({
             {room.players.map((player) => (
               <tr key={player.id}>
                 <td>{player.rank}.</td>
-                <th scope="row">{player.name}</th>
+                <th scope="row">
+                  {player.name}
+                  {player.teamId && (
+                    <small className={`result-team team-${player.teamId}`}>{teamLabel[player.teamId]}</small>
+                  )}
+                </th>
                 <td>{number(player.points)}</td>
                 <td>
-                  {player.solved}/{ROUND_COUNT}
+                  {player.solved}/{room.roundCount}
                 </td>
                 <td>{seconds(player.solved ? player.solveMs / player.solved : null)}</td>
-                <td>{secondsFormat.format(player.attempts / ROUND_COUNT)}</td>
+                <td>{secondsFormat.format(player.attempts / room.roundCount)}</td>
                 <td>
                   {player.fastestWord
                     ? `${player.fastestWord} · ${seconds(player.fastestMs)}`
@@ -618,6 +732,7 @@ export function MatchResults({
           </tbody>
         </table>
       </div>
+      <MatchAnalysis room={room} />
       <div className="button-group match-actions">
         {host && (
           <button
@@ -638,9 +753,11 @@ export function MatchResults({
             Tekrar oyna
           </button>
         )}
-        <button type="button" className="button button-secondary" onClick={continueRoom}>
-          Aynı odayla devam et
-        </button>
+        {!spectator && (
+          <button type="button" className="button button-secondary" onClick={continueRoom}>
+            Aynı odayla devam et
+          </button>
+        )}
         <ShareButton
           title="Kelime Arenası sonucu"
           text={`Kelime Arenası: ${mine ? `${mine.rank}. oldum ve ${number(mine.points)} puan topladım!` : `Arena şampiyonu: ${winnerText}`}`}
@@ -651,6 +768,47 @@ export function MatchResults({
           Ana menüye dön
         </button>
       </div>
+    </section>
+  );
+}
+
+function MatchAnalysis({ room }: { room: RoomView }) {
+  if (!room.roundAnalyses.length) return null;
+  return (
+    <section className="match-analysis" aria-labelledby="match-analysis-title">
+      <h2 id="match-analysis-title">Tur analizi</h2>
+      {room.roundAnalyses.map((round) => (
+        <details key={round.round}>
+          <summary>
+            Tur {round.round} <strong>{round.answer}</strong>{' '}
+            <span>{seconds(round.endedAt - round.startedAt)}</span>
+          </summary>
+          <div className="table-scroll">
+            <table className="results-table">
+              <thead>
+                <tr>
+                  <th scope="col">Oyuncu</th>
+                  <th scope="col">Durum</th>
+                  <th scope="col">Süre</th>
+                  <th scope="col">Deneme</th>
+                  <th scope="col">Puan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {round.players.map((player) => (
+                  <tr key={player.playerId}>
+                    <th scope="row">{player.name}</th>
+                    <td>{statusLabel[player.status]}</td>
+                    <td>{seconds(player.elapsedMs)}</td>
+                    <td>{player.attempts}</td>
+                    <td>+{number(player.points)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ))}
     </section>
   );
 }

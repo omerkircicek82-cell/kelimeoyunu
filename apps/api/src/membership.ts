@@ -2,11 +2,40 @@ import { BadRequestException, ConflictException, HttpException, UnauthorizedExce
 import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { evaluateGuess } from "@arena/game-engine";
-import { INITIAL_RATING, MAX_ATTEMPTS, normalizeWord, ratedRoundDelta, SOLO_TICKET_LIMIT, type AuthReply, type SoloResultRequest } from "@arena/shared";
+import {
+  INITIAL_RATING, LEAGUES, LEAGUE_DETAILS, MAX_ATTEMPTS, normalizeWord, progressionFor,
+  ratedRoundDelta, SOLO_TICKET_LIMIT,
+  type AccountProfile, type AuthReply, type LeagueId, type LeaderboardEntry, type SoloResultRequest,
+} from "@arena/shared";
 import { Prisma, type PrismaClient } from "./generated/prisma/client";
 
 const deriveKey = promisify(scrypt);
-const profileFields = { id: true, username: true, rating: true, ratedGames: true } as const;
+const profileFields = {
+  id: true, username: true, rating: true, ratedGames: true,
+  wins: true, winStreak: true, bestWinStreak: true, peakRating: true,
+} as const;
+type ProfileRow = Prisma.AccountGetPayload<{ select: typeof profileFields }>;
+type LockedAccount = Pick<ProfileRow, "rating" | "winStreak" | "bestWinStreak" | "peakRating">;
+
+function toProfile(account: ProfileRow): AccountProfile {
+  const { id, username, rating, ratedGames } = account;
+  return { id, username, rating, ratedGames, progression: progressionFor(account) };
+}
+
+function leaderboardEntry(profile: AccountProfile, rank: number): LeaderboardEntry {
+  const { username, rating, ratedGames, progression } = profile;
+  return { rank, username, rating, ratedGames, progression };
+}
+
+function leaderboardRange(league?: LeagueId): Prisma.AccountWhereInput {
+  const ratedGames = { gt: 0 };
+  if (!league) return { ratedGames };
+  const next = LEAGUES[LEAGUES.indexOf(league) + 1];
+  return {
+    ratedGames,
+    rating: { gte: LEAGUE_DETAILS[league].minRating, lt: next ? LEAGUE_DETAILS[next].minRating : undefined },
+  };
+}
 const sessionMs = 30 * 24 * 60 * 60_000;
 const ticketMs = 7 * 24 * 60 * 60_000;
 const dummyHash = "00000000000000000000000000000000:" + "00".repeat(64);
@@ -20,8 +49,9 @@ export function bearer(value?: string) {
 }
 
 async function lockAccount(db: Prisma.TransactionClient, accountId: string) {
-  const rows = await db.$queryRaw<Array<{ rating: number }>>`
-    SELECT rating FROM "Account" WHERE id = ${accountId} FOR UPDATE
+  const rows = await db.$queryRaw<LockedAccount[]>`
+    SELECT rating, "winStreak", "bestWinStreak", "peakRating"
+    FROM "Account" WHERE id = ${accountId} FOR UPDATE
   `;
   return rows.at(0);
 }
@@ -31,14 +61,27 @@ async function applyLockedRating(
   accountId: string,
   id: string,
   source: "online" | "offline",
-  before: number,
+  account: LockedAccount,
   delta: number,
 ) {
+  const before = account.rating;
   const after = Math.max(0, before + delta);
   const event = await db.ratingEvent.create({
     data: { id, accountId, source, before, after, delta: after - before },
   });
-  await db.account.update({ where: { id: accountId }, data: { rating: after, ratedGames: { increment: 1 } } });
+  const won = delta > 0;
+  const winStreak = won ? account.winStreak + 1 : 0;
+  await db.account.update({
+    where: { id: accountId },
+    data: {
+      rating: after,
+      ratedGames: { increment: 1 },
+      wins: { increment: won ? 1 : 0 },
+      winStreak,
+      bestWinStreak: Math.max(account.bestWinStreak, winStreak),
+      peakRating: Math.max(account.peakRating, after),
+    },
+  });
   return event;
 }
 
@@ -46,7 +89,7 @@ export async function recordOnlineRating(db: Prisma.TransactionClient, accountId
   const id = `online:${roundId}:${accountId}`;
   const account = await lockAccount(db, accountId);
   if (!account || await db.ratingEvent.findUnique({ where: { id }, select: { id: true } })) return;
-  await applyLockedRating(db, accountId, id, "online", account.rating, delta);
+  await applyLockedRating(db, accountId, id, "online", account, delta);
 }
 
 export class Membership {
@@ -77,7 +120,7 @@ export class Membership {
       const profile = await this.db.account.create({
         data: { username, passwordHash: `${salt}:${hash}`, rating: INITIAL_RATING }, select: profileFields,
       });
-      return this.issueSession(profile);
+      return this.issueSession(toProfile(profile));
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException("Bu kullanıcı adı kullanımda.");
@@ -95,8 +138,7 @@ export class Membership {
     if (!timingSafeEqual(computed, Buffer.from(hash, "hex")) || !account) {
       throw new UnauthorizedException("Kullanıcı adı veya parola hatalı.");
     }
-    const { passwordHash, ...profile } = account;
-    return this.issueSession(profile);
+    return this.issueSession(toProfile(account));
   }
 
   private async issueSession(profile: AuthReply["profile"]): Promise<AuthReply> {
@@ -112,7 +154,7 @@ export class Membership {
     const session = await this.db.accountSession.findUnique({
       where: { id: digest(token) }, select: { expiresAt: true, account: { select: profileFields } },
     });
-    return session && session.expiresAt.getTime() > Date.now() ? session.account : null;
+    return session && session.expiresAt.getTime() > Date.now() ? toProfile(session.account) : null;
   }
 
   async requireProfile(token: string | undefined) {
@@ -125,22 +167,24 @@ export class Membership {
     await this.db.accountSession.deleteMany({ where: { id: digest(token) } });
   }
 
-  async leaderboard(session?: string) {
+  async leaderboard(session?: string, league?: LeagueId) {
     const profile = await this.getProfile(session);
+    const where = leaderboardRange(league);
     const accounts = await this.db.account.findMany({
-      where: { ratedGames: { gt: 0 } },
+      where,
       orderBy: [{ rating: "desc" }, { username: "asc" }], take: 100, select: profileFields,
     });
-    const entries = accounts.map(({ id, ...account }, index) => ({ ...account, rank: index + 1 }));
-    if (!profile?.ratedGames || accounts.some(account => account.id === profile.id)) return { entries };
+    const entries = accounts.map((account, index) => leaderboardEntry(toProfile(account), index + 1));
+    if (!profile?.ratedGames || (league && profile.progression?.league !== league) || accounts.some(account => account.id === profile.id)) {
+      return { entries };
+    }
     const ahead = await this.db.account.count({
-      where: { ratedGames: { gt: 0 }, OR: [
+      where: { ...where, OR: [
         { rating: { gt: profile.rating } },
         { rating: profile.rating, username: { lt: profile.username } },
       ] },
     });
-    const { id, ...account } = profile;
-    entries.push({ ...account, rank: ahead + 1 });
+    entries.push(leaderboardEntry(profile, ahead + 1));
     return { entries };
   }
 
@@ -192,7 +236,7 @@ export class Membership {
       }
 
       const guesses = words.map(word => ({ word, marks: evaluateGuess(ticket.answer, word) }));
-      const event = await applyLockedRating(tx, accountId, id, "offline", account.rating, ratedRoundDelta(guesses, solved));
+      const event = await applyLockedRating(tx, accountId, id, "offline", account, ratedRoundDelta(guesses, solved));
       await tx.soloChallenge.update({ where: { id: ticket.id }, data: { playedAt: new Date() } });
       return { delta: event.delta, rating: event.after };
     });

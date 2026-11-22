@@ -3,11 +3,13 @@ import type { Server as HttpServer } from "node:http";
 import { isIP } from "node:net";
 import { Server, type Socket } from "socket.io";
 import { z } from "zod";
-import { ROUND_MODES, type AccountProfile, type ClientEvents, type PublicPhase, type Reply, type RoomTicket, type RoomView, type ServerEvents } from "@arena/shared";
-import { Arena, ArenaError, type ArenaOptions } from "./arena";
+import {
+  GAME_MODES, ROUND_COUNT_MAX, ROUND_COUNT_MIN, ROUND_MODES, ROUND_SECONDS_MAX, ROUND_SECONDS_MIN, TEAM_IDS,
+  type AccountProfile, type ClientEvents, type PublicPhase, type Reply, type RoomTicket, type RoomView, type ServerEvents,
+} from "@arena/shared";
+import { Arena, ArenaError, type ArenaOptions, type Identity } from "./arena";
 import type { History } from "./history";
 
-type Identity = { code: string; playerId: string };
 type SocketData = { identity?: Identity; account?: AccountProfile };
 type Client = Socket<ClientEvents, ServerEvents, Record<never, never>, SocketData>;
 type Session = Identity & { id: string; expiresAt: number; accountId?: string };
@@ -19,11 +21,16 @@ const playerName = z.string().trim().min(1).max(24).regex(/^[^\p{C}<>]+$/u);
 const roomName = playerName.max(40);
 const code = z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6}$/);
 const capacity = z.number().int().min(2).max(8);
-const roundMode = z.enum(ROUND_MODES).optional();
+const rules = {
+  roundMode: z.enum(ROUND_MODES).optional(),
+  gameMode: z.enum(GAME_MODES).optional(),
+  roundCount: z.number().int().min(ROUND_COUNT_MIN).max(ROUND_COUNT_MAX).optional(),
+  roundSeconds: z.number().int().min(ROUND_SECONDS_MIN).max(ROUND_SECONDS_MAX).optional(),
+};
 const empty = z.object({}).strict();
 const guess = z.object({
   matchId: z.string().uuid(),
-  round: z.number().int().min(1).max(5),
+  round: z.number().int().min(1).max(ROUND_COUNT_MAX),
   requestId: z.string().regex(/^[\w-]{8,64}$/),
   word: z.string().min(1).max(24),
 }).strict();
@@ -121,9 +128,11 @@ export function mountGateway(
       if (room.phase === "intermission" && room.answer) socket.emit("game:round-end", { ...stage, answer: room.answer });
       if (room.phase === "finished") socket.emit("game:match-end", stage);
     }
-    if (!previous || previous.players.length !== room.players.length || previous.players.some(player =>
-      room.players.find(current => current.id === player.id)?.status !== player.status,
-    )) socket.emit("game:player-status", room.players);
+    if (!previous || previous.players.length !== room.players.length || previous.players.some(player => {
+      const current = room.players.find(item => item.id === player.id);
+      return current?.status !== player.status || current?.roundAttempts !== player.roundAttempts
+        || current?.roundSolved !== player.roundSolved;
+    })) socket.emit("game:player-status", room.players);
     if (!previous || previous.players.length !== room.players.length || previous.players.some(player =>
       room.players.find(current => current.id === player.id)?.points !== player.points,
     )) socket.emit("game:score-update", room.players);
@@ -141,7 +150,7 @@ export function mountGateway(
       sockets = new Map();
       members.set(identity.code, sockets);
     }
-    socket.data.identity = { code: identity.code, playerId: identity.playerId };
+    socket.data.identity = { code: identity.code, playerId: identity.playerId, role: identity.role };
     sockets.set(identity.playerId, socket);
   }
 
@@ -158,9 +167,10 @@ export function mountGateway(
   function revoke(playerId: string) {
     const id = sessionIds.get(playerId);
     if (!id) return;
+    const session = sessions.get(id);
     sessionIds.delete(playerId);
     sessions.delete(id);
-    history.enqueue({ type: "session:remove", id });
+    if (session && session.role !== "spectator") history.enqueue({ type: "session:remove", id });
   }
 
   function issue(socket: Client, identity: Identity): RoomTicket {
@@ -169,13 +179,14 @@ export function mountGateway(
     const expiresAt = Date.now() + sessionMs;
     sessions.set(id, { ...identity, id, expiresAt, accountId: socket.data.account?.id });
     sessionIds.set(identity.playerId, id);
-    history.enqueue({ type: "session:save", id, playerId: identity.playerId, expiresAt });
+    if (identity.role !== "spectator") history.enqueue({ type: "session:save", id, playerId: identity.playerId, expiresAt });
     bind(socket, identity);
     announce(identity, "player:connected");
     return { token, room: arena.snapshot(identity) };
   }
 
   function announce(identity: Identity, event: "player:connected" | "player:disconnected" | "player:reconnected") {
+    if (identity.role === "spectator") return;
     for (const socket of members.get(identity.code)?.values() ?? []) {
       socket.emit(event, { playerId: identity.playerId });
     }
@@ -286,18 +297,22 @@ export function mountGateway(
     }
 
     socket.on("room:create", command(
-      z.object({ playerName, name: z.union([roomName, z.literal("")]).optional(), maxPlayers: capacity, roundMode }).strict(),
-      input => {
+      z.object({ playerName, name: z.union([roomName, z.literal("")]).optional(), maxPlayers: capacity, ...rules }).strict(),
+      ({ playerName: suppliedName, name: roomName, ...settings }) => {
         authorizeEntry();
         return issue(socket, arena.create({
-          name: socket.data.account?.username ?? input.playerName, accountId: socket.data.account?.id,
-          roomName: input.name || undefined, maxPlayers: input.maxPlayers, roundMode: input.roundMode,
+          ...settings, name: socket.data.account?.username ?? suppliedName,
+          accountId: socket.data.account?.id, roomName,
         }));
       },
     ));
     socket.on("room:join", command(z.object({ playerName, code }).strict(), input => {
       authorizeEntry();
       return issue(socket, arena.join({ code: input.code, name: socket.data.account?.username ?? input.playerName, accountId: socket.data.account?.id }));
+    }));
+    socket.on("room:spectate", command(z.object({ code }).strict(), input => {
+      authorizeEntry();
+      return issue(socket, arena.spectate(input.code));
     }));
     socket.on("room:resume", command(z.object({
       code, token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
@@ -332,8 +347,12 @@ export function mountGateway(
       revoke(input.playerId);
       return {};
     }));
-    socket.on("room:settings", command(z.object({ name: roomName, maxPlayers: capacity, roundMode }).strict(), input => {
-      arena.settings(identity(), { roomName: input.name, maxPlayers: input.maxPlayers, roundMode: input.roundMode });
+    socket.on("room:settings", command(z.object({ name: roomName, maxPlayers: capacity, ...rules }).strict(), ({ name, ...settings }) => {
+      arena.settings(identity(), { ...settings, roomName: name });
+      return {};
+    }));
+    socket.on("room:team", command(z.object({ teamId: z.enum(TEAM_IDS) }).strict(), ({ teamId }) => {
+      arena.selectTeam(identity(), teamId);
       return {};
     }));
     socket.on("game:start", command(empty, () => {

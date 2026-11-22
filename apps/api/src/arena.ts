@@ -5,13 +5,15 @@ import {
   type Stats,
 } from '@arena/game-engine';
 import {
-  DEFAULT_ROUND_MODE, FINAL_GUESS_MS, ratedRoundDelta, scoreCloseness,
+  DEFAULT_ROUND_MODE, FINAL_GUESS_MS, ROUND_COUNT_MAX, ROUND_COUNT_MIN,
+  ROUND_SECONDS_MAX, ROUND_SECONDS_MIN, TEAM_IDS, TEAM_SIZE, ratedRoundDelta, scoreCloseness,
   type ClosenessScore, type Guess, type GuessRequest, type Phase, type PlayerStatus,
-  type PlayerView, type RoomView, type RoundMode,
+  type GameMode, type PlayerView, type RoomRules, type RoomView, type RoundMode,
+  type RoundAnalysis, type RoundPlayerAnalysis, type TeamId, type TeamView,
 } from '@arena/shared';
 
-export type Identity = { code: string; playerId: string };
-export type Settings = { roomName?: string; maxPlayers?: number; roundMode?: RoundMode };
+export type Identity = { code: string; playerId: string; role?: 'spectator' };
+export type Settings = RoomRules & { roomName?: string; maxPlayers?: number };
 
 export interface Clock {
   now(): number;
@@ -27,12 +29,18 @@ const systemClock: Clock = {
   },
 };
 
-interface RoomMetadata {
+interface MatchRules {
+  roundMode: RoundMode;
+  gameMode: GameMode;
+  roundCount: number;
+  roundSeconds: number;
+}
+
+interface RoomMetadata extends MatchRules {
   id: string;
   code: string;
   name: string;
   maxPlayers: number;
-  roundMode: RoundMode;
   hostId: string;
 }
 
@@ -42,16 +50,11 @@ interface StoredGuess extends Guess {
   atMs: number;
 }
 
-interface RoundResult {
-  playerId: string;
-  status: PlayerStatus;
-  points: number;
-  attempts: number;
-  solveMs: number | null;
-}
+type RoundResult = Omit<RoundPlayerAnalysis, 'name'>;
 
 interface Standing extends Stats {
   playerId: string;
+  teamId: TeamId | null;
   rank: number;
   fastestMs: number | null;
   fastestWord: string | null;
@@ -61,7 +64,7 @@ export type ArenaEvent =
   | { type: 'player:create'; player: { id: string; name: string; accountId?: string } }
   | { type: 'room:create' | 'room:update'; room: RoomMetadata }
   | { type: 'room:participant'; roomId: string; playerId: string }
-  | { type: 'match:start'; matchId: string; roomId: string; roundMode: RoundMode }
+  | ({ type: 'match:start'; matchId: string; roomId: string } & MatchRules)
   | {
       type: 'round:end';
       roundId: string;
@@ -74,7 +77,10 @@ export type ArenaEvent =
       results: RoundResult[];
       ratings: { accountId: string; delta: number }[];
     }
-  | { type: 'match:end'; matchId: string; endedAt: number; results: Standing[] };
+  | {
+      type: 'match:end'; matchId: string; endedAt: number; results: Standing[];
+      teamResults: TeamView[]; winnerTeamId: TeamId | null;
+    };
 
 export interface ArenaOptions {
   clock?: Clock;
@@ -91,6 +97,7 @@ interface PlayerRound {
   status: RoundStatus;
   points: number;
   solveMs: number | null;
+  completedAt?: number;
   closeness?: ClosenessScore;
   ratedAccount?: string;
 }
@@ -99,6 +106,7 @@ interface Player extends Stats {
   id: string;
   accountId?: string;
   name: string;
+  teamId: TeamId | null;
   ready: boolean;
   connected: boolean;
   left: boolean;
@@ -116,10 +124,18 @@ interface Match {
   roundId: string;
   startedAt: number;
   finalCountdown: boolean;
+  analyses: RoundAnalysis[];
+}
+
+interface Spectator {
+  id: string;
+  connected: boolean;
+  cancelExpiry?: () => void;
 }
 
 interface Room extends RoomMetadata {
   players: Map<string, Player>;
+  spectators: Map<string, Spectator>;
   phase: Phase;
   deadline: number | null;
   cancelTimer?: () => void;
@@ -129,6 +145,7 @@ interface Room extends RoomMetadata {
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const RECONNECT_MS = 90_000;
 const MAX_ROOMS = 2_000;
+const MAX_SPECTATORS = 24;
 
 function newPlayerRound(): PlayerRound {
   return { guesses: [], status: 'playing', points: 0, solveMs: null };
@@ -164,15 +181,15 @@ export class Arena {
     }
     const player = this.newPlayer(input.name, input.accountId);
     const name = this.roomName(input.roomName ?? '') || `${player.name} odası`;
-    const maxPlayers = this.capacity(input.maxPlayers ?? 8);
+    const rules = this.gameRules(input);
+    const maxPlayers = this.capacity(input.maxPlayers ?? 8, rules.gameMode);
     let code: string;
     do {
       code = Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('');
     } while (this.rooms.has(code));
     const room: Room = {
       id: randomUUID(), code, name, maxPlayers, hostId: player.id,
-      roundMode: input.roundMode ?? DEFAULT_ROUND_MODE,
-      players: new Map(), phase: 'lobby', deadline: null,
+      ...rules, players: new Map(), spectators: new Map(), phase: 'lobby', deadline: null,
     };
     this.rooms.set(code, room);
     return this.addPlayer(room, player, true);
@@ -189,17 +206,36 @@ export class Arena {
     return this.addPlayer(room, player);
   }
 
+  spectate(code: string): Identity {
+    const room = this.getRoom(code);
+    if (room.spectators.size >= MAX_SPECTATORS) {
+      throw new ArenaError('SPECTATORS_FULL', 'Bu odanın izleyici kapasitesi dolu.');
+    }
+    const spectator: Spectator = { id: randomUUID(), connected: true };
+    room.spectators.set(spectator.id, spectator);
+    this.changed(room);
+    return { code, playerId: spectator.id, role: 'spectator' };
+  }
+
   resume(identity: Identity): void {
-    const { room, player } = this.member(identity, false);
-    player.cancelExpiry?.();
-    player.cancelExpiry = undefined;
-    if (player.connected) return;
-    player.connected = true;
+    const { room, viewer } = this.viewer(identity);
+    viewer.cancelExpiry?.();
+    viewer.cancelExpiry = undefined;
+    if (viewer.connected) return;
+    viewer.connected = true;
     this.changed(room);
   }
 
   disconnect(identity: Identity): void {
     const room = this.rooms.get(identity.code);
+    if (identity.role === 'spectator') {
+      const spectator = room?.spectators.get(identity.playerId);
+      if (!room || !spectator?.connected) return;
+      spectator.connected = false;
+      spectator.cancelExpiry = this.clock.setTimer(() => this.removeSpectator(room, spectator), this.reconnectMs);
+      this.changed(room);
+      return;
+    }
     const player = room?.players.get(identity.playerId);
     if (!room || !player?.connected || player.left) return;
 
@@ -209,6 +245,11 @@ export class Arena {
   }
 
   leave(identity: Identity): void {
+    if (identity.role === 'spectator') {
+      const room = this.getRoom(identity.code);
+      this.removeSpectator(room, this.spectator(room, identity.playerId));
+      return;
+    }
     const { room, player } = this.member(identity, false);
     this.removePlayer(room, player);
   }
@@ -236,14 +277,35 @@ export class Arena {
     this.requireLobby(room);
     const host = room.players.get(room.hostId)!;
     const name = input.roomName === undefined ? room.name : this.roomName(input.roomName) || `${host.name} odası`;
-    const maxPlayers = input.maxPlayers === undefined ? room.maxPlayers : this.capacity(input.maxPlayers);
+    const rules = this.gameRules(input, room);
+    const maxPlayers = this.capacity(input.maxPlayers ?? room.maxPlayers, rules.gameMode);
     if (maxPlayers < room.players.size) {
       throw new ArenaError('CAPACITY', 'Kapasite mevcut oyuncu sayısından küçük olamaz.');
     }
-    room.name = name;
-    room.maxPlayers = maxPlayers;
-    room.roundMode = input.roundMode ?? room.roundMode;
+    const reassign = room.gameMode !== rules.gameMode;
+    const rulesChanged = reassign || room.roundMode !== rules.roundMode
+      || room.roundCount !== rules.roundCount || room.roundSeconds !== rules.roundSeconds
+      || room.maxPlayers !== maxPlayers;
+    Object.assign(room, rules, { name, maxPlayers });
+    if (rulesChanged) {
+      for (const [index, player] of [...room.players.values()].entries()) {
+        player.ready = false;
+        if (reassign) player.teamId = room.gameMode === 'ffa' ? null : TEAM_IDS[index % TEAM_IDS.length];
+      }
+    }
     this.options.onPersist?.({ type: 'room:update', room: this.metadata(room) });
+    this.changed(room);
+  }
+
+  selectTeam(identity: Identity, teamId: TeamId): void {
+    const { room, player } = this.member(identity);
+    this.requireLobby(room);
+    const size = TEAM_SIZE[room.gameMode];
+    if (!size) throw new ArenaError('NO_TEAMS', 'Bu odada takımlar açık değil.');
+    if (player.teamId === teamId) return;
+    if (this.teamMemberCount(room, teamId) >= size) throw new ArenaError('TEAM_FULL', 'Bu takım dolu.');
+    player.teamId = teamId;
+    player.ready = false;
     this.changed(room);
   }
 
@@ -251,14 +313,22 @@ export class Arena {
     const room = this.host(identity);
     this.requireLobby(room);
     if (room.players.size < 2) throw new ArenaError('NEED_PLAYERS', 'Maç için en az iki oyuncu gerekli.');
+    const teamSize = TEAM_SIZE[room.gameMode];
+    if (teamSize && TEAM_IDS.some(id => this.teamMemberCount(room, id) !== teamSize)) {
+      throw new ArenaError('UNBALANCED_TEAMS', `Maç için her takımda ${teamSize} oyuncu olmalı.`);
+    }
     if ([...room.players.values()].some(player => !player.connected || (player.id !== room.hostId && !player.ready))) {
       throw new ArenaError('NOT_READY', 'Tüm oyuncular bağlanmalı ve misafirler hazır olmalı.');
     }
     const words = [...this.answers];
-    const chosen = Array.from({ length: ROUNDS }, () => words.splice(randomInt(words.length), 1)[0]);
-    room.match = { id: randomUUID(), answers: chosen, round: 0, roundId: '', startedAt: 0, finalCountdown: false };
+    const chosen = Array.from({ length: room.roundCount }, () => words.splice(randomInt(words.length), 1)[0]);
+    room.match = {
+      id: randomUUID(), answers: chosen, round: 0, roundId: '', startedAt: 0,
+      finalCountdown: false, analyses: [],
+    };
     this.options.onPersist?.({
-      type: 'match:start', matchId: room.match.id, roomId: room.id, roundMode: room.roundMode,
+      type: 'match:start', matchId: room.match.id, roomId: room.id,
+      roundMode: room.roundMode, gameMode: room.gameMode, roundCount: room.roundCount, roundSeconds: room.roundSeconds,
     });
     this.setPhase(room, 'countdown', COUNTDOWN_MS, () => this.beginRound(room));
   }
@@ -297,8 +367,12 @@ export class Arena {
     player.attempts++;
     if (word === answer) {
       round.status = 'solved';
+      round.completedAt = atMs;
       round.solveMs = atMs - match.startedAt;
-      const timeBonusBudget = room.roundMode === 'timed' ? ROUND_MS - round.solveMs : 0;
+      const durationMs = room.roundSeconds * 1_000;
+      const timeBonusBudget = room.roundMode === 'timed'
+        ? (durationMs - round.solveMs) * ROUND_MS / durationMs
+        : 0;
       round.points = calculatePoints(timeBonusBudget, attempt);
       player.solved++;
       player.points += round.points;
@@ -309,6 +383,7 @@ export class Arena {
       }
     } else if (attempt === ATTEMPTS) {
       round.status = 'exhausted';
+      round.completedAt = atMs;
     }
     if (!this.finishIfDone(room)) {
       if (round.status === 'solved' && !match.finalCountdown) {
@@ -344,13 +419,15 @@ export class Arena {
   }
 
   snapshot(identity: Identity): RoomView {
-    const { room, player } = this.member(identity, false);
+    const { room } = this.viewer(identity);
     const match = room.match;
+    const spectator = identity.role === 'spectator';
+    const player = spectator ? undefined : room.players.get(identity.playerId);
     const standings = this.standings(room);
     const players: PlayerView[] = standings.map(entry => {
       const participant = room.players.get(entry.playerId)!;
       return {
-        id: entry.playerId, name: participant.name, rank: entry.rank,
+        id: entry.playerId, name: participant.name, rank: entry.rank, teamId: participant.teamId,
         points: entry.points, solved: entry.solved, solveMs: entry.solveMs,
         attempts: entry.attempts, fastestMs: entry.fastestMs,
         fastestWord: room.phase === 'finished' ? entry.fastestWord : null,
@@ -361,16 +438,23 @@ export class Arena {
         roundPoints: participant.round.points,
         roundCloseness: participant.round.closeness,
         roundAttempts: participant.round.guesses.length,
+        roundSolved: participant.round.status === 'solved',
         roundSolveMs: participant.round.solveMs,
       };
     });
+    const teams = this.teams(room);
     return {
       code: room.code, name: room.name, maxPlayers: room.maxPlayers,
-      hostId: room.hostId, playerId: player.id, phase: room.phase,
-      roundMode: room.roundMode, finalCountdown: room.phase === 'round' && match?.finalCountdown === true,
+      hostId: room.hostId, playerId: identity.playerId, phase: room.phase,
+      viewerRole: spectator ? 'spectator' : 'player',
+      spectatorCount: [...room.spectators.values()].filter(viewer => viewer.connected).length,
+      roundMode: room.roundMode, gameMode: room.gameMode, roundCount: room.roundCount,
+      roundSeconds: room.roundSeconds, finalCountdown: room.phase === 'round' && match?.finalCountdown === true,
       matchId: match?.id ?? null,
       round: match?.round ?? 0, deadline: room.deadline, serverNow: this.clock.now(),
-      players, guesses: player.round.guesses.map(guess => this.privateGuess(guess)),
+      players, teams, winnerTeamId: room.phase === 'finished' ? this.winningTeam(teams) : null,
+      roundAnalyses: match?.analyses ?? [],
+      guesses: player?.round.guesses.map(guess => this.privateGuess(guess)) ?? [],
       answer: match && (room.phase === 'intermission' || room.phase === 'finished')
         ? match.answers[match.round - 1]
         : null,
@@ -383,7 +467,7 @@ export class Arena {
       throw new ArenaError('INVALID_NAME', 'Oyuncu adı 2–24 karakter olmalı ve geçerli karakterler içermeli.');
     }
     return {
-      id: randomUUID(), name, accountId, ready: false, connected: true, left: false,
+      id: randomUUID(), name, accountId, teamId: null, ready: false, connected: true, left: false,
       points: 0, attempts: 0, solveMs: 0, solved: 0, fastestMs: null, fastestWord: null,
       round: newPlayerRound(), seenGuesses: new Map(),
     };
@@ -397,21 +481,45 @@ export class Arena {
     return name;
   }
 
-  private capacity(value: number): number {
+  private capacity(value: number, gameMode: GameMode): number {
     if (!Number.isInteger(value) || value < 2 || value > 8) {
       throw new ArenaError('CAPACITY', 'Oda kapasitesi 2 ile 8 arasında olmalı.');
     }
-    return value;
+    return TEAM_SIZE[gameMode] * TEAM_IDS.length || value;
+  }
+
+  private gameRules(input: RoomRules, current?: MatchRules): MatchRules {
+    const roundCount = input.roundCount ?? current?.roundCount ?? ROUNDS;
+    const roundSeconds = input.roundSeconds ?? current?.roundSeconds ?? ROUND_MS / 1_000;
+    if (!Number.isInteger(roundCount) || roundCount < ROUND_COUNT_MIN || roundCount > ROUND_COUNT_MAX) {
+      throw new ArenaError('ROUND_COUNT', `Tur sayısı ${ROUND_COUNT_MIN} ile ${ROUND_COUNT_MAX} arasında olmalı.`);
+    }
+    if (roundCount > this.answers.length) {
+      throw new ArenaError('ROUND_COUNT', 'Bu tur sayısı için sözlükte yeterli cevap yok.');
+    }
+    if (!Number.isInteger(roundSeconds) || roundSeconds < ROUND_SECONDS_MIN || roundSeconds > ROUND_SECONDS_MAX) {
+      throw new ArenaError('ROUND_SECONDS', `Tur süresi ${ROUND_SECONDS_MIN} ile ${ROUND_SECONDS_MAX} saniye arasında olmalı.`);
+    }
+    return {
+      roundCount,
+      roundSeconds,
+      gameMode: input.gameMode ?? current?.gameMode ?? 'ffa',
+      roundMode: input.roundMode ?? current?.roundMode ?? DEFAULT_ROUND_MODE,
+    };
   }
 
   private metadata(room: Room): RoomMetadata {
     return {
       id: room.id, code: room.code, name: room.name, maxPlayers: room.maxPlayers, hostId: room.hostId,
-      roundMode: room.roundMode,
+      roundMode: room.roundMode, gameMode: room.gameMode, roundCount: room.roundCount, roundSeconds: room.roundSeconds,
     };
   }
 
   private addPlayer(room: Room, player: Player, owner = false): Identity {
+    if (room.gameMode !== 'ffa') {
+      const [first, second] = TEAM_IDS;
+      player.teamId = this.teamMemberCount(room, first) <= this.teamMemberCount(room, second) ? first : second;
+    }
     room.players.set(player.id, player);
     this.options.onPersist?.({ type: 'player:create', player: { id: player.id, name: player.name, accountId: player.accountId } });
     if (owner) this.options.onPersist?.({ type: 'room:create', room: this.metadata(room) });
@@ -427,12 +535,36 @@ export class Arena {
   }
 
   private member(identity: Identity, requireConnected = true): { room: Room; player: Player } {
+    if (identity.role === 'spectator') {
+      throw new ArenaError('SPECTATOR_READ_ONLY', 'İzleyiciler yalnızca maçı takip edebilir.');
+    }
     const room = this.getRoom(identity.code);
     const player = room.players.get(identity.playerId);
     if (!player || player.left || (requireConnected && !player.connected)) {
       throw new ArenaError('NOT_A_MEMBER', 'Oda oturumunuz artık geçerli değil.');
     }
     return { room, player };
+  }
+
+  private spectator(room: Room, id: string): Spectator {
+    const spectator = room.spectators.get(id);
+    if (!spectator) throw new ArenaError('NOT_A_MEMBER', 'İzleyici oturumunuz artık geçerli değil.');
+    return spectator;
+  }
+
+  private viewer(identity: Identity): { room: Room; viewer: Player | Spectator } {
+    if (identity.role === 'spectator') {
+      const room = this.getRoom(identity.code);
+      return { room, viewer: this.spectator(room, identity.playerId) };
+    }
+    const { room, player } = this.member(identity, false);
+    return { room, viewer: player };
+  }
+
+  private removeSpectator(room: Room, spectator: Spectator): void {
+    spectator.cancelExpiry?.();
+    room.spectators.delete(spectator.id);
+    this.changed(room);
   }
 
   private host(identity: Identity): Room {
@@ -450,6 +582,10 @@ export class Arena {
     player.cancelExpiry = undefined;
     player.left = true;
     player.connected = false;
+    if (room.phase === 'round' && player.round.status === 'playing') {
+      player.round.status = 'timeout';
+      player.round.completedAt = this.clock.now();
+    }
     if (room.phase === 'lobby') room.players.delete(player.id);
     const members = [...room.players.values()].filter(participant => !participant.left);
     if (room.hostId === player.id && members.length) {
@@ -457,21 +593,55 @@ export class Arena {
       this.options.onPersist?.({ type: 'room:update', room: this.metadata(room) });
     }
     if (members.length === 0 && (room.phase === 'lobby' || room.phase === 'finished')) {
-      this.rooms.delete(room.code);
+      this.closeRoom(room);
     }
     if (!this.finishIfDone(room)) this.changed(room);
   }
 
   private standings(room: Room): Standing[] {
     return rankPlayers([...room.players.values()].map(player => ({
-      playerId: player.id, points: player.points, solved: player.solved,
+      playerId: player.id, teamId: player.teamId, points: player.points, solved: player.solved,
       solveMs: player.solveMs, attempts: player.attempts, fastestMs: player.fastestMs,
       fastestWord: player.fastestWord,
     })));
   }
 
+  private teamMemberCount(room: Room, id: TeamId): number {
+    return [...room.players.values()].filter(player => player.teamId === id && !player.left).length;
+  }
+
+  private teams(room: Room): TeamView[] {
+    if (room.gameMode === 'ffa') return [];
+    const scores = TEAM_IDS.map(id => {
+      const totals = { id, points: 0, solved: 0, solveMs: 0, attempts: 0, roundPoints: 0 };
+      for (const player of room.players.values()) {
+        if (player.teamId !== id) continue;
+        totals.points += player.points;
+        totals.solved += player.solved;
+        totals.solveMs += player.solveMs;
+        totals.attempts += player.attempts;
+        totals.roundPoints += player.round.points;
+      }
+      return totals;
+    });
+    return rankPlayers(scores).map(({ id, points, solved, roundPoints, rank }) => (
+      { id, points, solved, roundPoints, rank }
+    ));
+  }
+
+  private winningTeam(teams: TeamView[]): TeamId | null {
+    return teams.length > 1 && teams[1].rank > teams[0].rank ? teams[0].id : null;
+  }
+
   private changed(room: Room): void {
     this.options.onUpdate?.(room.code);
+  }
+
+  private closeRoom(room: Room): void {
+    room.cancelTimer?.();
+    for (const spectator of room.spectators.values()) spectator.cancelExpiry?.();
+    room.spectators.clear();
+    this.rooms.delete(room.code);
   }
 
   private setPhase(room: Room, phase: Phase, duration?: number, callback?: () => void): void {
@@ -496,6 +666,10 @@ export class Arena {
   }
 
   private beginRound(room: Room): void {
+    if (![...room.players.values()].some(player => !player.left)) {
+      this.finishMatch(room);
+      return;
+    }
     const match = room.match!;
     match.round++;
     match.roundId = randomUUID();
@@ -503,10 +677,13 @@ export class Arena {
     match.finalCountdown = false;
     for (const player of room.players.values()) {
       player.round = newPlayerRound();
-      if (player.left) player.round.status = 'timeout';
+      if (player.left) {
+        player.round.status = 'timeout';
+        player.round.completedAt = match.startedAt;
+      }
       else player.round.ratedAccount = player.accountId;
     }
-    const duration = room.roundMode === 'timed' ? ROUND_MS : undefined;
+    const duration = room.roundMode === 'timed' ? room.roundSeconds * 1_000 : undefined;
     this.setPhase(room, 'round', duration, () => this.endRound(room));
     this.finishIfDone(room);
   }
@@ -536,17 +713,23 @@ export class Arena {
         delta: ratedRoundDelta(round.guesses, round.status === 'solved'),
       });
       results.push({
-        playerId: player.id, status: round.status, points: round.points,
+        playerId: player.id, teamId: player.teamId, status: round.status, points: round.points,
         attempts: round.guesses.length, solveMs: round.solveMs,
+        elapsedMs: Math.min(round.completedAt ?? endedAt, endedAt) - match.startedAt,
       });
     }
+    const answer = match.answers[match.round - 1];
+    match.analyses = [...match.analyses, {
+      round: match.round, answer, startedAt: match.startedAt, endedAt,
+      players: results.map(result => ({ ...result, name: room.players.get(result.playerId)!.name })),
+    }];
     this.options.onPersist?.({
       type: 'round:end', roundId: match.roundId, matchId: match.id, number: match.round,
-      answer: match.answers[match.round - 1], startedAt: match.startedAt,
+      answer, startedAt: match.startedAt,
       endedAt, guesses, results, ratings,
     });
     this.setPhase(room, 'intermission', INTERMISSION_MS, () => {
-      if (match.round < ROUNDS) this.beginRound(room);
+      if (match.round < room.roundCount) this.beginRound(room);
       else this.finishMatch(room);
     });
   }
@@ -572,10 +755,12 @@ export class Arena {
   }
 
   private finishMatch(room: Room): void {
+    const teamResults = this.teams(room);
     this.options.onPersist?.({
       type: 'match:end', matchId: room.match!.id, endedAt: this.clock.now(), results: this.standings(room),
+      teamResults, winnerTeamId: this.winningTeam(teamResults),
     });
-    if (![...room.players.values()].some(player => !player.left)) this.rooms.delete(room.code);
+    if (![...room.players.values()].some(player => !player.left)) this.closeRoom(room);
     this.setPhase(room, 'finished');
   }
 

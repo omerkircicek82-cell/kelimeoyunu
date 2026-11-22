@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   Eye,
   EyeOff,
+  Flame,
   LoaderCircle,
   LogIn,
   LogOut,
@@ -13,11 +14,16 @@ import {
   UserRoundPlus,
 } from 'lucide-react';
 import {
+  BADGE_DETAILS,
+  LEAGUES,
+  LEAGUE_DETAILS,
+  leagueForRating,
   RATING_GREEN_POINTS,
   RATING_ROUND_POINTS,
   RATING_YELLOW_POINTS,
   type AccountProfile,
   type LeaderboardEntry,
+  type LeagueId,
 } from '@arena/shared';
 import { Avatar } from './ui';
 import './member.css';
@@ -203,11 +209,18 @@ export function AccountPanel({
 }
 
 function AccountSummary({ profile }: { profile: AccountProfile }) {
+  const progression = profile.progression;
+  const league = progression?.league ?? leagueForRating(profile.rating);
   return (
     <div className="member-summary">
       <div className="member-identity">
         <Avatar name={profile.username} id={profile.id} />
-        <strong>{profile.username}</strong>
+        <div>
+          <strong>{profile.username}</strong>
+          <div className="member-title">
+            <LeagueLabel league={league} /> {progression?.title}
+          </div>
+        </div>
       </div>
       <dl className="member-metrics">
         <div>
@@ -219,8 +232,52 @@ function AccountSummary({ profile }: { profile: AccountProfile }) {
           <dd>{numbers.format(profile.ratedGames)}</dd>
         </div>
       </dl>
+      {progression && (
+        <>
+          <dl className="member-metrics">
+            <div>
+              <dt>
+                <Flame size={13} aria-hidden="true" /> Çözüm serisi
+              </dt>
+              <dd>{numbers.format(progression.winStreak)}</dd>
+            </div>
+            <div>
+              <dt>En iyi seri</dt>
+              <dd>{numbers.format(progression.bestWinStreak)}</dd>
+            </div>
+            <div>
+              <dt>Çözülen dereceli tur</dt>
+              <dd>{numbers.format(progression.wins)}</dd>
+            </div>
+            <div>
+              <dt>En yüksek puan</dt>
+              <dd>{numbers.format(progression.peakRating)}</dd>
+            </div>
+          </dl>
+          {progression.badges.length > 0 && (
+            <details className="member-badges">
+              <summary>Rozetler ({progression.badges.length})</summary>
+              <ul>
+                {progression.badges.map((badge) => (
+                  <li key={badge}>
+                    <Medal size={16} aria-hidden="true" />
+                    <div>
+                      <strong>{BADGE_DETAILS[badge].label}</strong>
+                      <p>{BADGE_DETAILS[badge].description}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
     </div>
   );
+}
+
+function LeagueLabel({ league }: { league: LeagueId }) {
+  return <span className={`league-label league-${league}`}>{LEAGUE_DETAILS[league].label}</span>;
 }
 
 type BoardState = { entries: LeaderboardEntry[] | null; loading: boolean; error: string };
@@ -232,11 +289,12 @@ export function LeaderboardPage({
   onHome,
 }: {
   profile: AccountProfile | null;
-  loadEntries: () => Promise<LeaderboardEntry[]>;
+  loadEntries: (league?: LeagueId) => Promise<LeaderboardEntry[]>;
   onAccount: () => void;
   onHome: () => void;
 }) {
   const [revision, setRevision] = useState(0);
+  const [league, setLeague] = useState<LeagueId>();
   const [board, setBoard] = useState<BoardState>({ entries: null, loading: true, error: '' });
   const loader = useRef(loadEntries);
 
@@ -249,7 +307,7 @@ export function LeaderboardPage({
     setBoard((previous) => ({ ...previous, loading: true, error: '' }));
     void (async () => {
       try {
-        const entries = await loader.current();
+        const entries = await loader.current(league);
         if (active) setBoard({ entries, loading: false, error: '' });
       } catch (reason) {
         const error = reason instanceof Error ? reason.message : 'Sıralama yüklenemedi.';
@@ -259,7 +317,7 @@ export function LeaderboardPage({
     return () => {
       active = false;
     };
-  }, [profile?.id, profile?.ratedGames, profile?.rating, revision]);
+  }, [profile?.id, profile?.ratedGames, profile?.rating, revision, league]);
 
   const ownEntry = board.entries?.find((entry) => entry.username === profile?.username);
 
@@ -297,6 +355,23 @@ export function LeaderboardPage({
               Yenile
             </button>
           </div>
+          <label className="member-filter room-form">
+            Lig
+            <select
+              value={league ?? ''}
+              onChange={(event) => {
+                setBoard({ entries: null, loading: true, error: '' });
+                setLeague((event.currentTarget.value || undefined) as LeagueId | undefined);
+              }}
+            >
+              <option value="">Tüm ligler</option>
+              {LEAGUES.map((id) => (
+                <option key={id} value={id}>
+                  {LEAGUE_DETAILS[id].label}
+                </option>
+              ))}
+            </select>
+          </label>
           {board.loading && (
             <p className="member-board-status" role="status">
               Sıralama yükleniyor…
@@ -336,6 +411,12 @@ export function LeaderboardPage({
                         <Avatar name={entry.username} id={entry.username} />
                         <span>
                           {entry.username} {entry === ownEntry && <small>Sen</small>}
+                          <span className="member-title">
+                            <LeagueLabel
+                              league={entry.progression?.league ?? leagueForRating(entry.rating)}
+                            />
+                            {entry.progression?.title}
+                          </span>
                         </span>
                       </div>
                     </th>
@@ -355,7 +436,7 @@ export function LeaderboardPage({
                 <AccountSummary profile={profile} />
                 {ownEntry && (
                   <p className="member-hint">
-                    Genel sıran <strong>{numbers.format(ownEntry.rank)}.</strong>
+                    {league ? 'Lig sıran' : 'Genel sıran'} <strong>{numbers.format(ownEntry.rank)}.</strong>
                   </p>
                 )}
               </>

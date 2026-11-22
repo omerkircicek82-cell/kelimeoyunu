@@ -1,11 +1,16 @@
 import "reflect-metadata";
 import { Controller, Get, Module, ServiceUnavailableException } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { FINAL_GUESS_MS, MAX_ATTEMPTS, ROUND_COUNT, ROUND_MODES, ROUND_MS, WORD_LENGTH } from "@arena/shared";
+import {
+  FINAL_GUESS_MS, GAME_MODES, MAX_ATTEMPTS, ROUND_COUNT, ROUND_COUNT_MAX, ROUND_COUNT_MIN,
+  ROUND_MODES, ROUND_MS, ROUND_SECONDS_MAX, ROUND_SECONDS_MIN, WORD_LENGTH,
+} from "@arena/shared";
 import { History } from "./history";
 import { mountGateway, originAllowed } from "./gateway";
 import { Membership } from "./membership";
 import { membershipController } from "./membership.controller";
+import { DailyService } from "./daily";
+import { dailyController } from "./daily.controller";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL gerekli. PostgreSQL bağlantısını .env dosyasında ayarlayın.");
@@ -15,6 +20,7 @@ const dictionary = await history.loadDictionary().catch(async () => {
   await history.close();
   throw new Error("PostgreSQL kelime sözlüğü yüklenemedi. Bağlantıyı kontrol edin ve npm run migrate çalıştırın.");
 });
+const daily = new DailyService(history.db, dictionary);
 
 @Controller("api")
 class StatusController {
@@ -22,7 +28,8 @@ class StatusController {
   rules() {
     return {
       roundCount: ROUND_COUNT, roundMs: ROUND_MS, roundModes: ROUND_MODES, finalGuessMs: FINAL_GUESS_MS,
-      maxAttempts: MAX_ATTEMPTS, wordLength: WORD_LENGTH,
+      maxAttempts: MAX_ATTEMPTS, wordLength: WORD_LENGTH, gameModes: GAME_MODES,
+      roundCountRange: [ROUND_COUNT_MIN, ROUND_COUNT_MAX], roundSecondsRange: [ROUND_SECONDS_MIN, ROUND_SECONDS_MAX],
     };
   }
 
@@ -36,7 +43,7 @@ class StatusController {
   }
 }
 
-@Module({ controllers: [StatusController, membershipController(membership)] })
+@Module({ controllers: [StatusController, membershipController(membership), dailyController(daily, membership)] })
 class ApiModule {}
 
 const app = await NestFactory.create(ApiModule);

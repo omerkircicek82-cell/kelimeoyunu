@@ -5,6 +5,7 @@ import {
   Copy,
   Crown,
   DoorOpen,
+  Eye,
   Lock,
   Play,
   Settings2,
@@ -14,7 +15,8 @@ import {
 import { motion } from 'motion/react';
 import type { PlayerView, RoomView } from '@arena/shared';
 import { request } from './connection';
-import { Avatar, Modal, RoundModeField, roundModeLabel, ShareButton } from './ui';
+import { Avatar, Modal, roundModeLabel, ShareButton } from './ui';
+import { gameModeLabel, RoomRules, teamLabel, type RoomRulesValue } from './RoomRules';
 
 export function RoomHeading({ room, leave }: { room: RoomView; leave: () => void }) {
   return (
@@ -24,7 +26,16 @@ export function RoomHeading({ room, leave }: { room: RoomView; leave: () => void
           <Lock size={13} /> Özel oda <code>{room.code}</code>
           <span className="room-mode">
             <Timer size={13} aria-hidden="true" /> {roundModeLabel[room.roundMode]}
+            {room.roundMode === 'timed' ? ` · ${room.roundSeconds} sn` : ''}
           </span>
+          <span>
+            {gameModeLabel[room.gameMode]} · {room.roundCount} tur
+          </span>
+          {room.spectatorCount > 0 && (
+            <span className="room-mode">
+              <Eye size={13} /> {room.spectatorCount} izleyici
+            </span>
+          )}
         </p>
         <h1>{room.name}</h1>
       </div>
@@ -37,6 +48,8 @@ export function RoomHeading({ room, leave }: { room: RoomView; leave: () => void
 
 export function InviteCard({ room, notify }: { room: RoomView; notify: (message: string) => void }) {
   const url = new URL(`/room/${room.code}`, window.location.origin).href;
+  const watchUrl = new URL(url);
+  watchUrl.searchParams.set('izle', '1');
   return (
     <section className="panel lobby-invite" aria-label="Arkadaşlarını davet et">
       <h2>Arkadaşlarını davet et</h2>
@@ -72,6 +85,13 @@ export function InviteCard({ room, notify }: { room: RoomView; notify: (message:
         label="Davet bağlantısını paylaş"
         notify={notify}
       />
+      <ShareButton
+        title="Kelime Arenası"
+        text={`Kelime Arenası maçını izle. Oda kodu: ${room.code}`}
+        url={watchUrl.href}
+        label="İzleyici bağlantısını paylaş"
+        notify={notify}
+      />
     </section>
   );
 }
@@ -90,8 +110,11 @@ export function Lobby({
   showResults?: () => void;
 }) {
   const me = room.players.find((player) => player.id === room.playerId);
-  const host = room.hostId === room.playerId;
+  const spectator = room.viewerRole === 'spectator';
+  const host = !spectator && room.hostId === room.playerId;
+  const teamsReady = room.gameMode === 'ffa' || room.players.length === room.maxPlayers;
   const canStart =
+    teamsReady &&
     room.players.length >= 2 &&
     room.players.every((player) => player.connected && (player.id === room.hostId || player.ready));
   const active = room.phase === 'lobby';
@@ -132,12 +155,36 @@ export function Lobby({
             </button>
           )}
         </div>
+        {active && me && room.gameMode !== 'ffa' && (
+          <div className="lobby-team-switch" role="group" aria-label="Takım seç">
+            {(['a', 'b'] as const).map((teamId) => {
+              const count = room.players.filter((player) => player.teamId === teamId).length;
+              return (
+                <button
+                  key={teamId}
+                  type="button"
+                  className={`button button-secondary team-${teamId}`}
+                  aria-pressed={me.teamId === teamId}
+                  disabled={busy || !enabled || (count >= room.maxPlayers / 2 && me.teamId !== teamId)}
+                  onClick={() => {
+                    if (me.teamId !== teamId) void run(() => request('room:team', { teamId }));
+                  }}
+                >
+                  {teamLabel[teamId]} · {count}/{room.maxPlayers / 2}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <ul className="lobby-list">
           {room.players.map((player) => (
             <motion.li layout key={player.id} className="player-row">
               <Avatar name={player.name} id={player.id} />
               <span className="player-name">
                 {player.name}
+                {player.teamId && (
+                  <small className={`team-${player.teamId}`}>{teamLabel[player.teamId]}</small>
+                )}
                 {player.id === room.playerId && <small>Sen</small>}
               </span>
               {player.id === room.hostId && (
@@ -170,7 +217,9 @@ export function Lobby({
           ))}
         </ul>
         <div className="lobby-actions">
-          {afterMatch ? (
+          {spectator ? (
+            <p>İzleyici olarak oyuncuların durumunu ve maç sonuçlarını takip edebilirsin.</p>
+          ) : afterMatch ? (
             <>
               <p>
                 {host
@@ -197,9 +246,11 @@ export function Lobby({
               <p>
                 {room.players.length < 2
                   ? 'Başlamak için en az iki oyuncu gerekli.'
-                  : !canStart
-                    ? 'Diğer oyuncuların hazır olması bekleniyor.'
-                    : 'Herkes hazır. Arenayı başlatabilirsin.'}
+                  : !teamsReady
+                    ? 'Maçın başlaması için iki takım da dolmalı.'
+                    : !canStart
+                      ? 'Diğer oyuncuların hazır olması bekleniyor.'
+                      : 'Herkes hazır. Arenayı başlatabilirsin.'}
               </p>
               <button
                 className="button button-primary"
@@ -262,8 +313,13 @@ export function Lobby({
 
 function SettingsForm({ room, enabled, close }: { room: RoomView; enabled: boolean; close: () => void }) {
   const [name, setName] = useState(room.name);
-  const [maxPlayers, setMaxPlayers] = useState(room.maxPlayers);
-  const [roundMode, setRoundMode] = useState(room.roundMode);
+  const [rules, setRules] = useState<RoomRulesValue>({
+    roundCount: room.roundCount,
+    roundSeconds: room.roundSeconds,
+    roundMode: room.roundMode,
+    gameMode: room.gameMode,
+    maxPlayers: room.maxPlayers,
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const minPlayers = Math.max(2, room.players.length);
@@ -274,7 +330,7 @@ function SettingsForm({ room, enabled, close }: { room: RoomView; enabled: boole
     setBusy(true);
     setError('');
     try {
-      await request('room:settings', { name: name.trim(), maxPlayers, roundMode });
+      await request('room:settings', { name: name.trim(), ...rules });
       close();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Ayarlar kaydedilemedi.');
@@ -289,17 +345,7 @@ function SettingsForm({ room, enabled, close }: { room: RoomView; enabled: boole
         Oda adı
         <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={40} />
       </label>
-      <label>
-        Oyuncu kapasitesi
-        <select value={maxPlayers} onChange={(event) => setMaxPlayers(Number(event.target.value))}>
-          {Array.from({ length: 9 - minPlayers }, (_, index) => index + minPlayers).map((size) => (
-            <option key={size} value={size}>
-              {size} oyuncu
-            </option>
-          ))}
-        </select>
-      </label>
-      <RoundModeField value={roundMode} onChange={setRoundMode} />
+      <RoomRules value={rules} onChange={setRules} minimumPlayers={minPlayers} />
       {error && (
         <p role="alert" className="form-error">
           {error}

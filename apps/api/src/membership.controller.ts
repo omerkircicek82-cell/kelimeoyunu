@@ -1,8 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Header, Headers, HttpCode, Post, Req, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Header, Headers, HttpCode, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { isIP } from "node:net";
 import type { IncomingMessage } from "node:http";
 import { z } from "zod";
-import { MAX_ATTEMPTS, ROUND_MODES } from "@arena/shared";
+import { LEAGUES, MAX_ATTEMPTS, ROUND_MODES } from "@arena/shared";
 import { bearer, type Membership } from "./membership";
 
 const credentials = z.object({
@@ -65,8 +65,9 @@ export function membershipController(membership: Membership) {
 
     @Get("leaderboard")
     @Header("Cache-Control", "no-store")
-    async leaderboard(@Headers("authorization") authorization?: string) {
-      return membership.leaderboard(bearer(authorization));
+    async leaderboard(@Headers("authorization") authorization?: string, @Query("league") league?: string) {
+      const filter = read(z.enum(LEAGUES).optional(), league, "Lig seçimi geçersiz.");
+      return membership.leaderboard(bearer(authorization), filter);
     }
 
     @Post("solo/challenges")

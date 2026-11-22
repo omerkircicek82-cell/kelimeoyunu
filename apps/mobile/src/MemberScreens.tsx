@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  RATING_GREEN_POINTS, RATING_ROUND_POINTS, RATING_YELLOW_POINTS,
-  type AccountProfile, type LeaderboardEntry,
+  BADGE_DETAILS, LEAGUES, LEAGUE_DETAILS, RATING_GREEN_POINTS, RATING_ROUND_POINTS, RATING_YELLOW_POINTS,
+  type AccountProfile, type LeaderboardEntry, type LeagueId,
 } from '@arena/shared';
 import { baseStyles as base, colors } from './Theme';
 
@@ -85,9 +85,11 @@ function Notice({ message }: { message: string }) {
 export function NativeModeHome({
   openOnline,
   openOffline,
+  openDaily,
 }: {
   openOnline: () => void;
   openOffline: () => void;
+  openDaily: () => void;
 }) {
   return (
     <Screen>
@@ -115,12 +117,114 @@ export function NativeModeHome({
         primary
       />
       <ModeCard
+        title="Günlük mücadele"
+        detail="Günün beş kelimesini çöz ve bugünün sıralamasına katıl."
+        symbol="◆"
+        onPress={openDaily}
+      />
+      <ModeCard
         title="Çevrimdışı"
         detail="Kelimeleri tek başına ve kendi hızında bul."
         symbol="▦"
         onPress={openOffline}
       />
     </Screen>
+  );
+}
+
+export function MemberProfile({ account, goBack, onLogout, openLeaderboard }: {
+  account: AccountProfile;
+  goBack: () => void;
+  onLogout: () => Promise<void>;
+  openLeaderboard: () => void;
+}) {
+  const progress = account.progression;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function logout() {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onLogout();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Çıkış yapılamadı.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Screen goBack={goBack}>
+      <View style={base.sectionTitle}>
+        <Text accessibilityRole="header" style={base.title}>{account.username}</Text>
+        {progress && <Text style={base.subtitle}>{progress.title}</Text>}
+      </View>
+      <View style={[base.card, base.section]}>
+        <View style={styles.scoreRow}>
+          <View style={styles.modeText}>
+            <Text style={base.caption}>Arena ligi</Text>
+            <Text style={base.subtitle}>{progress ? LEAGUE_DETAILS[progress.league].label : 'Lig bilgisi alınamadı'}</Text>
+            <Text style={base.caption}>{numbers.format(account.ratedGames)} dereceli tur</Text>
+          </View>
+          <View style={styles.ratingBadge}>
+            <Text style={styles.ratingValue}>{numbers.format(account.rating)}</Text>
+            <Text style={base.caption}>Derece puanı</Text>
+          </View>
+        </View>
+        {Object.entries(LEAGUE_DETAILS).map(([id, { label, minRating }]) => (
+          <View key={id} style={[styles.scoreRow, styles.progressRow]}>
+            <Text style={[base.label, styles.modeText, progress?.league === id && styles.emphasis]}>
+              {label}{progress?.league === id ? ' · Senin ligin' : ''}
+            </Text>
+            <Text style={base.caption}>{numbers.format(minRating)} puan</Text>
+          </View>
+        ))}
+        <Button label="Genel sıralama" onPress={openLeaderboard} />
+      </View>
+      {progress && (
+        <>
+          <View style={[base.card, base.section]}>
+            <Text accessibilityRole="header" style={base.subtitle}>Galibiyet serisi</Text>
+            <Text style={base.caption}>Art arda çözdüğün dereceli turlar.</Text>
+            <View style={styles.progressMetrics}>
+              <ProgressMetric label="Güncel" value={progress.winStreak} />
+              <ProgressMetric label="En uzun" value={progress.bestWinStreak} />
+              <ProgressMetric label="Galibiyet" value={progress.wins} />
+            </View>
+            <Text style={base.caption}>En yüksek derece puanın {numbers.format(progress.peakRating)}.</Text>
+          </View>
+          <View style={[base.card, base.section]}>
+            <Text accessibilityRole="header" style={base.subtitle}>Rozetler</Text>
+            <Text style={base.caption}>{progress.badges.length} / {Object.keys(BADGE_DETAILS).length} kazanıldı</Text>
+            {Object.entries(BADGE_DETAILS).map(([id, badge]) => {
+              const acquired = progress.badges.some(earned => earned === id);
+              return (
+                <View key={id} style={[styles.scoreRow, styles.progressRow]}>
+                  <View style={styles.modeText}>
+                    <Text style={base.label}>{badge.label}</Text>
+                    <Text style={base.caption}>{badge.description}</Text>
+                  </View>
+                  <Text style={[base.caption, acquired && styles.emphasis]}>{acquired ? 'Kazanıldı' : 'Kilitli'}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      )}
+      {error ? <Notice message={error} /> : null}
+      <Button label={busy ? 'Çıkılıyor…' : 'Hesaptan çık'} disabled={busy} onPress={() => void logout()} />
+    </Screen>
+  );
+}
+
+function ProgressMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.metric}>
+      <Text style={styles.ratingValue}>{numbers.format(value)}</Text>
+      <Text style={base.caption}>{label}</Text>
+    </View>
   );
 }
 
@@ -165,10 +269,12 @@ export function MemberAuth({
   onLogin,
   onRegister,
   goBack,
+  daily = false,
 }: {
   onLogin: (credentials: Credentials) => Promise<void>;
   onRegister: (credentials: Credentials) => Promise<void>;
   goBack: () => void;
+  daily?: boolean;
 }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
@@ -206,7 +312,11 @@ export function MemberAuth({
         <Text accessibilityRole="header" style={base.title}>
           Arena hesabı
         </Text>
-        <Text style={base.body}>Dereceli maçlarını ve puanını hesabında takip et.</Text>
+        <Text style={base.body}>
+          {daily
+            ? 'Günlük mücadeleye katılmak için Arena hesabınla giriş yap.'
+            : 'Dereceli maçlarını ve puanını hesabında takip et.'}
+        </Text>
       </View>
       <View style={[base.card, base.section]}>
         <View accessibilityRole="tablist" style={styles.tabs}>
@@ -307,11 +417,12 @@ export function MemberLeaderboard({
   onLogout,
 }: {
   account: AccountProfile | null;
-  loadEntries: () => Promise<readonly LeaderboardEntry[]>;
+  loadEntries: (league?: LeagueId) => Promise<readonly LeaderboardEntry[]>;
   goBack: () => void;
   onLogout?: () => void | Promise<void>;
 }) {
   const [version, setVersion] = useState(0);
+  const [league, setLeague] = useState<LeagueId>();
   const [board, setBoard] = useState<BoardState>({ loading: true, error: '' });
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [logoutError, setLogoutError] = useState('');
@@ -323,7 +434,7 @@ export function MemberLeaderboard({
     setBoard((previous) => ({ ...previous, loading: true, error: '' }));
     void (async () => {
       try {
-        const entries = await load.current();
+        const entries = await load.current(league);
         if (subscribed) setBoard({ entries, loading: false, error: '' });
       } catch (reason) {
         if (subscribed) {
@@ -335,7 +446,7 @@ export function MemberLeaderboard({
     return () => {
       subscribed = false;
     };
-  }, [version]);
+  }, [league, version]);
 
   async function logout() {
     if (!onLogout || logoutBusy) return;
@@ -397,6 +508,25 @@ export function MemberLeaderboard({
             onPress={() => setVersion((value) => value + 1)}
           />
         </View>
+        <View style={styles.leagueFilters} accessibilityRole="tablist">
+          {([undefined, ...LEAGUES] as const).map(id => (
+            <Pressable
+              key={id ?? 'all'}
+              style={[styles.leagueFilter, league === id && styles.activeTab]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: league === id }}
+              onPress={() => {
+                if (league === id) return;
+                setBoard({ loading: true, error: '' });
+                setLeague(id);
+              }}
+            >
+              <Text style={[base.caption, league === id && styles.emphasis]}>
+                {id ? LEAGUE_DETAILS[id].label : 'Tümü'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         {board.loading && (
           <ActivityIndicator color={colors.lime} accessibilityLabel="Sıralama yükleniyor" />
         )}
@@ -417,7 +547,11 @@ export function MemberLeaderboard({
                   {entry.username}
                   {mine ? ' (sen)' : ''}
                 </Text>
-                <Text style={base.caption}>{numbers.format(entry.ratedGames)} tur</Text>
+                <Text style={base.caption}>
+                  {entry.progression
+                    ? `${LEAGUE_DETAILS[entry.progression.league].label} · ${entry.progression.title}`
+                    : `${numbers.format(entry.ratedGames)} tur`}
+                </Text>
               </View>
               <Text style={styles.rankingValue} accessibilityLabel={`${entry.rating} puan`}>
                 {numbers.format(entry.rating)}
@@ -543,6 +677,9 @@ const styles = StyleSheet.create({
   activeTab: { backgroundColor: colors.violetSoft },
   notice: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  progressRow: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10 },
+  progressMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  metric: { flex: 1, minWidth: 66, alignItems: 'center', padding: 8, borderRadius: 9, backgroundColor: colors.violetSoft },
   ratingBadge: {
     backgroundColor: colors.violetSoft,
     borderRadius: 10,
@@ -555,6 +692,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
   },
+  leagueFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  leagueFilter: { borderRadius: 8, minHeight: 44, justifyContent: 'center', paddingHorizontal: 7 },
   rankingRow: {
     minHeight: 52,
     borderTopWidth: 1,
@@ -578,3 +717,5 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 });
+
+export { Screen as MemberScreen, Button as MemberButton, Notice as MemberNotice };

@@ -7,7 +7,14 @@ const api = process.env.ARENA_VITE_API ?? 'http://localhost:3000';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    rollupOptions: { output: { manualChunks: { react: ['react', 'react-dom', 'react-router-dom'] } } },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          dictionary: ['@arena/game-engine/offline-words'],
+        },
+      },
+    },
   },
   server: {
     proxy: {

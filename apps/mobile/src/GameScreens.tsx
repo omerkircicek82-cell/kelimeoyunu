@@ -5,8 +5,6 @@ import {
   CLOSENESS_PRESENT_POINTS,
   FINAL_GUESS_MS,
   MAX_ATTEMPTS,
-  ROUND_COUNT,
-  ROUND_MS,
   WORD_LENGTH,
   scoreCloseness,
   type ClosenessScore,
@@ -15,6 +13,8 @@ import {
   type PlayerView,
   type RoundMode,
   type RoomView,
+  type RoundAnalysis,
+  type TeamId,
 } from '@arena/shared';
 
 const palette = {
@@ -29,10 +29,31 @@ const palette = {
   ink: '#141321',
 };
 const marked = {
-  correct: { color: '#c4f880', surface: '#324520', border: '#6d9850', symbol: '✓', label: 'Doğru yerde' },
-  present: { color: '#f9d48d', surface: '#4b361b', border: '#b68844', symbol: '↗', label: 'Yanlış yerde' },
-  absent: { color: '#c6c3d5', surface: '#303043', border: '#42425d', symbol: '−', label: 'Eşleşme yok' },
-} satisfies Record<Mark, { color: string; surface: string; border: string; symbol: string; label: string }>;
+  correct: {
+    color: '#c4f880',
+    surface: '#324520',
+    border: '#6d9850',
+    symbol: '✓',
+    label: 'Doğru yerde',
+  },
+  present: {
+    color: '#f9d48d',
+    surface: '#4b361b',
+    border: '#b68844',
+    symbol: '↗',
+    label: 'Yanlış yerde',
+  },
+  absent: {
+    color: '#c6c3d5',
+    surface: '#303043',
+    border: '#42425d',
+    symbol: '−',
+    label: 'Eşleşme yok',
+  },
+} satisfies Record<
+  Mark,
+  { color: string; surface: string; border: string; symbol: string; label: string }
+>;
 const strength: Record<Mark, number> = { absent: 0, present: 1, correct: 2 };
 const keyboardRows = ['ERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZCVBNMÖÇ'];
 const extraLetters = 'ÂÎÛ';
@@ -44,6 +65,7 @@ const playerStatus: Record<PlayerView['status'], string> = {
   disconnected: 'Bağlantı kesildi',
 };
 
+const teamLabels: Record<TeamId, string> = { a: 'Takım A', b: 'Takım B' };
 const pointFormat = new Intl.NumberFormat('tr-TR');
 const secondsFormat = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
 function timeLabel(milliseconds: number) {
@@ -59,7 +81,11 @@ function useRemaining(room: RoomView) {
     observedAt: performance.now(),
   }));
   if (anchor.deadline !== room.deadline || anchor.serverNow !== room.serverNow) {
-    setAnchor({ deadline: room.deadline, serverNow: room.serverNow, observedAt: performance.now() });
+    setAnchor({
+      deadline: room.deadline,
+      serverNow: room.serverNow,
+      observedAt: performance.now(),
+    });
   }
 
   useEffect(() => {
@@ -132,9 +158,11 @@ function Countdown({ room }: { room: RoomView }) {
           {seconds || 'Başla'}
         </Text>
       </View>
-      <Text style={styles.title}>İlk kelimeye hazır ol</Text>
+      <Text style={styles.title}>
+        {room.viewerRole === 'spectator' ? 'İlk turu izlemeye hazırlan' : 'İlk kelimeye hazır ol'}
+      </Text>
       <Text style={styles.detail}>
-        {room.roundMode === 'untimed' ? 'Süresiz tur' : `Süreli tur · ${ROUND_MS / 1000} saniye`}
+        {room.roundMode === 'untimed' ? 'Süresiz tur' : `Süreli tur · ${room.roundSeconds} saniye`}
         {' · '}
         {MAX_ATTEMPTS} tahmin hakkı
       </Text>
@@ -158,19 +186,25 @@ function ActiveRound({
 }: Pick<GameScreensProps, 'room' | 'online' | 'submitGuess' | 'showMarkSymbols'>) {
   const remaining = useRemaining(room);
   const timerLabel = room.finalCountdown ? 'Son şans' : 'Kalan süre';
-  const timerWindow = room.finalCountdown ? FINAL_GUESS_MS : ROUND_MS;
+  const timerWindow = room.finalCountdown ? FINAL_GUESS_MS : room.roundSeconds * 1000;
+  const spectating = room.viewerRole === 'spectator';
+  const solvedCount = room.players.filter((player) => player.roundSolved).length;
   const { width, height } = useWindowDimensions();
   const tileSize = Math.min(49, Math.floor((width - 76) / WORD_LENGTH), height < 740 ? 42 : 49);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
-  const [panel, setPanel] = useState<RoundPanel>('guess');
+  const [panel, setPanel] = useState<RoundPanel>(spectating ? 'standings' : 'guess');
   const draftRef = useRef('');
   const attempt = useRef<{ word: string; id: string; index: number } | null>(null);
   const attempts = useRef(0);
   const inFlight = useRef(false);
   const mine = room.players.find((player) => player.id === room.playerId);
+  const myTeam = room.teams.find((team) => team.id === mine?.teamId);
+  const scoreLabel = spectating ? 'İZLEYİCİ' : myTeam ? teamLabels[myTeam.id] : 'PUAN';
+  const score = spectating ? room.spectatorCount : (myTeam?.points ?? mine?.points ?? 0);
   const playable =
+    !spectating &&
     online &&
     (remaining === null || remaining > 0) &&
     mine?.status === 'playing' &&
@@ -265,7 +299,7 @@ function ActiveRound({
             <Text style={styles.metricLabel}>TUR</Text>
             <Text style={styles.metricValue}>
               {room.round}
-              <Text style={styles.metricSmall}> / {ROUND_COUNT}</Text>
+              <Text style={styles.metricSmall}> / {room.roundCount}</Text>
             </Text>
           </View>
           <View style={[styles.metric, styles.middleMetric]}>
@@ -293,8 +327,8 @@ function ActiveRound({
             )}
           </View>
           <View style={[styles.metric, styles.rightMetric]}>
-            <Text style={styles.metricLabel}>PUAN</Text>
-            <Text style={styles.metricValue}>{pointFormat.format(mine?.points ?? 0)}</Text>
+            <Text style={styles.metricLabel}>{scoreLabel}</Text>
+            <Text style={styles.metricValue}>{pointFormat.format(score)}</Text>
           </View>
         </View>
 
@@ -311,27 +345,37 @@ function ActiveRound({
         )}
       </View>
 
-      <View style={styles.tabs} accessibilityRole="tablist">
-        {roundPanels.map(({ id, label }) => (
-          <Pressable
-            key={id}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: panel === id }}
-            onPress={() => setPanel(id)}
-            style={({ pressed }) => [
-              styles.tab,
-              panel === id && styles.tabSelected,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.tabLabel, panel === id && styles.tabSelectedLabel]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {!spectating && (
+        <View style={styles.tabs} accessibilityRole="tablist">
+          {roundPanels.map(({ id, label }) => (
+            <Pressable
+              key={id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: panel === id }}
+              onPress={() => setPanel(id)}
+              style={({ pressed }) => [
+                styles.tab,
+                panel === id && styles.tabSelected,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.tabLabel, panel === id && styles.tabSelectedLabel]}>
+                {id === 'standings' ? `${label} · ${solvedCount}/${room.players.length}` : label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
-      {panel === 'standings' && <LiveStandings room={room} />}
-      {panel === 'scoring' && <ScoringPanel guesses={room.guesses} mode={room.roundMode} />}
-      {panel === 'guess' && (
+      {(spectating || panel === 'standings') && <LiveStandings room={room} />}
+      {!spectating && panel === 'scoring' && (
+        <ScoringPanel
+          guesses={room.guesses}
+          mode={room.roundMode}
+          roundSeconds={room.roundSeconds}
+        />
+      )}
+      {!spectating && panel === 'guess' && (
         <View style={styles.roundStack}>
           <View style={styles.roundCard}>
             <View style={styles.board}>
@@ -398,25 +442,57 @@ function ActiveRound({
   );
 }
 
+function TeamStandings({ room }: { room: RoomView }) {
+  if (room.teams.length === 0) return null;
+  return (
+    <View style={styles.teamList}>
+      {room.teams.map((team) => (
+        <View
+          key={team.id}
+          style={[
+            styles.roundCard,
+            styles.teamCard,
+            room.winnerTeamId === team.id && styles.ownPlayerRow,
+          ]}
+        >
+          <Text style={styles.sectionTitle}>{teamLabels[team.id]}</Text>
+          <Text style={styles.playerPoints}>{pointFormat.format(team.points)} puan</Text>
+          <Text style={styles.detail}>
+            {room.phase === 'intermission'
+              ? `Bu tur +${pointFormat.format(team.roundPoints)}`
+              : `${team.solved} çözüm`}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function LiveStandings({ room }: { room: RoomView }) {
-  const completed = room.players.filter(
-    (player) =>
-      player.status === 'solved' || player.status === 'exhausted' || player.status === 'timeout',
-  ).length;
+  const solvedCount = room.players.filter((player) => player.roundSolved).length;
   return (
     <View style={styles.roundStack}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Canlı sıralama</Text>
         <Text style={styles.detail}>
-          {completed}/{room.players.length} oyuncu turu bitirdi
+          {solvedCount}/{room.players.length} oyuncu çözdü
         </Text>
       </View>
+      <TeamStandings room={room} />
       <PlayerList room={room} phase="round" />
     </View>
   );
 }
 
-function ScoringPanel({ guesses, mode }: { guesses: readonly Guess[]; mode: RoundMode }) {
+function ScoringPanel({
+  guesses,
+  mode,
+  roundSeconds,
+}: {
+  guesses: readonly Guess[];
+  mode: RoundMode;
+  roundSeconds: number;
+}) {
   const best = guesses.reduce<ClosenessScore | null>((closest, guess) => {
     const score = scoreCloseness(guess.marks);
     return !closest || score.points > closest.points ? score : closest;
@@ -440,8 +516,8 @@ function ScoringPanel({ guesses, mode }: { guesses: readonly Guess[]; mode: Roun
       <View style={[styles.roundCard, styles.bonusCard]}>
         <Text style={styles.bonusTitle}>Yakınlık puanı</Text>
         <Text style={styles.detail}>
-          Kimse kelimeyi bulamazsa her oyuncunun en iyi tahmin satırı karşılaştırılır.
-          En yüksek pozitif puan, o değere ulaşan her oyuncuya verilir.
+          Kimse kelimeyi bulamazsa her oyuncunun en iyi tahmin satırı karşılaştırılır. En yüksek
+          pozitif puan, o değere ulaşan her oyuncuya verilir.
         </Text>
         <View style={styles.closenessCounts}>
           <Text style={[styles.closenessCount, { color: marked.correct.color }]}>
@@ -457,7 +533,7 @@ function ScoringPanel({ guesses, mode }: { guesses: readonly Guess[]; mode: Roun
         <Text style={styles.detail}>
           {mode === 'untimed'
             ? 'Süresiz turda doğru tahmine temel puan ve kullanılmayan tahmin hakkı bonusu verilir.'
-            : `Süreli turda doğru tahmine temel puan, kalan tahmin hakkı ve turun ilk ${ROUND_MS / 1000} saniyesine göre süre bonusu verilir.`}
+            : `Süreli turda doğru tahmine temel puan, kalan tahmin hakkı ve turun ilk ${roundSeconds} saniyesine göre süre bonusu verilir.`}
         </Text>
         <Text style={styles.detail}>
           İlk doğru tahminden sonra diğer oyunculara {FINAL_GUESS_MS / 1000} saniye verilir.
@@ -549,12 +625,16 @@ function Key({
   );
 }
 
-function RoundSummary({ room, showMarkSymbols }: Pick<GameScreensProps, 'room' | 'showMarkSymbols'>) {
+function RoundSummary({
+  room,
+  showMarkSymbols,
+}: Pick<GameScreensProps, 'room' | 'showMarkSymbols'>) {
   const remaining = useRemaining(room) ?? 0;
   const { width } = useWindowDimensions();
   const size = Math.min(49, Math.floor((width - 70) / WORD_LENGTH));
   const bonusPlayers = room.players.filter((player) => !!player.roundCloseness);
   const mine = room.players.find((player) => player.id === room.playerId);
+  const analysis = room.roundAnalyses.find(({ round }) => round === room.round);
   return (
     <View style={styles.roundStack}>
       <View style={styles.centerCard}>
@@ -562,11 +642,23 @@ function RoundSummary({ room, showMarkSymbols }: Pick<GameScreensProps, 'room' |
         <Text style={styles.title}>Doğru kelime</Text>
         <View style={styles.boardRow}>
           {Array.from(room.answer ?? '').map((letter, index) => (
-            <Tile key={index} size={size} letter={letter} mark="correct" showSymbol={showMarkSymbols} />
+            <Tile
+              key={index}
+              size={size}
+              letter={letter}
+              mark="correct"
+              showSymbol={showMarkSymbols}
+            />
           ))}
         </View>
+        {analysis && (
+          <Text style={styles.detail}>
+            Tur süresi · {elapsed(analysis.endedAt - analysis.startedAt)}
+          </Text>
+        )}
         <Text style={styles.detail}>
-          {room.round === ROUND_COUNT ? 'Maç sonucu' : 'Sonraki tur'} · {Math.ceil(remaining / 1000)} sn
+          {room.round === room.roundCount ? 'Maç sonucu' : 'Sonraki tur'} ·{' '}
+          {Math.ceil(remaining / 1000)} sn
         </Text>
       </View>
       {bonusPlayers.length > 0 && (
@@ -582,6 +674,7 @@ function RoundSummary({ room, showMarkSymbols }: Pick<GameScreensProps, 'room' |
         <Text style={styles.sectionTitle}>Tur sonuçları</Text>
         {mine && <Text style={styles.ownTotal}>Sen · +{pointFormat.format(mine.roundPoints)}</Text>}
       </View>
+      <TeamStandings room={room} />
       <PlayerList room={room} phase="intermission" />
     </View>
   );
@@ -600,6 +693,7 @@ function MatchSummary({
   const inFlight = useRef(false);
   const winners = room.players.filter(({ rank }) => rank === 1);
   const podium = room.players.filter(({ rank }) => rank <= 3).slice(0, 3);
+  const teamMatch = room.gameMode !== 'ffa';
 
   async function run(action: () => Promise<void>) {
     if (inFlight.current) return;
@@ -620,25 +714,46 @@ function MatchSummary({
     <View style={styles.roundStack}>
       <View style={styles.centerCard}>
         <Text style={styles.eyebrow}>MAÇ TAMAMLANDI</Text>
-        <Text style={styles.title}>{winners.length > 1 ? 'Arena şampiyonları' : 'Arena şampiyonu'}</Text>
-        <Text style={styles.winnerNames}>{winners.map(({ name }) => name).join(' · ')}</Text>
-        <View style={styles.podium}>
-          {podium.map((player) => (
-            <View key={player.id} style={[styles.podiumCard, player.rank === 1 && styles.firstPlace]}>
-              <Text style={[styles.podiumRank, player.rank === 1 && styles.highlight]}>{player.rank}.</Text>
-              <Text numberOfLines={1} accessibilityLabel={player.name} style={styles.playerName}>
-                {player.name}
-              </Text>
-              <Text numberOfLines={1} style={styles.detail}>
-                {pointFormat.format(player.points)} puan
-              </Text>
-            </View>
-          ))}
-        </View>
+        <Text style={styles.title}>
+          {teamMatch
+            ? room.winnerTeamId
+              ? `${teamLabels[room.winnerTeamId]} kazandı`
+              : 'Takımlar berabere'
+            : winners.length > 1
+              ? 'Arena şampiyonları'
+              : 'Arena şampiyonu'}
+        </Text>
+        {!teamMatch && (
+          <Text style={styles.winnerNames}>{winners.map(({ name }) => name).join(' · ')}</Text>
+        )}
+        {!teamMatch && (
+          <View style={styles.podium}>
+            {podium.map((player) => (
+              <View
+                key={player.id}
+                style={[styles.podiumCard, player.rank === 1 && styles.firstPlace]}
+              >
+                <Text style={[styles.podiumRank, player.rank === 1 && styles.highlight]}>
+                  {player.rank}.
+                </Text>
+                <Text numberOfLines={1} accessibilityLabel={player.name} style={styles.playerName}>
+                  {player.name}
+                </Text>
+                <Text numberOfLines={1} style={styles.detail}>
+                  {pointFormat.format(player.points)} puan
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
-      <Text style={styles.sectionTitle}>Maç sıralaması</Text>
+      <TeamStandings room={room} />
+      <Text style={styles.sectionTitle}>
+        {teamMatch ? 'Oyuncu istatistikleri' : 'Maç sıralaması'}
+      </Text>
       <PlayerList room={room} phase="finished" />
+      <MatchAnalysis rounds={room.roundAnalyses} />
       {error ? (
         <Text style={[styles.feedback, styles.danger]} accessibilityLiveRegion="polite">
           {error}
@@ -656,6 +771,62 @@ function MatchSummary({
         <ResultAction label="Sonucu paylaş" blocked={pending} onPress={share} />
         <ResultAction label="Ana menüye dön" blocked={pending} onPress={() => void run(leave)} />
       </View>
+    </View>
+  );
+}
+
+function elapsed(ms: number) {
+  return `${secondsFormat.format(Math.max(0, ms) / 1000)} sn`;
+}
+
+function MatchAnalysis({ rounds }: { rounds: readonly RoundAnalysis[] }) {
+  const [selected, setSelected] = useState<number | null>(null);
+  if (rounds.length === 0) return null;
+
+  return (
+    <View style={styles.roundStack}>
+      <Text style={styles.sectionTitle}>Tur ayrıntıları</Text>
+      {rounds.map((round) => {
+        const expanded = selected === round.round;
+        return (
+          <View key={round.round} style={styles.roundCard}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded }}
+              onPress={() => setSelected(expanded ? null : round.round)}
+              style={styles.analysisToggle}
+            >
+              <Text style={styles.playerName}>
+                Tur {round.round} · {round.answer}
+              </Text>
+              <Text style={styles.detail}>
+                {elapsed(round.endedAt - round.startedAt)} {expanded ? '▴' : '▾'}
+              </Text>
+            </Pressable>
+            {expanded && (
+              <View style={styles.roundStack}>
+                {round.players.map((player) => (
+                  <View key={player.playerId} style={styles.analysisRow}>
+                    <View style={styles.playerInfo}>
+                      <Text style={styles.playerName}>
+                        {player.name}
+                        {player.teamId ? ` · ${teamLabels[player.teamId]}` : ''}
+                      </Text>
+                      <Text style={styles.detail}>
+                        {player.attempts} tahmin ·{' '}
+                        {player.solveMs === null
+                          ? playerStatus[player.status]
+                          : elapsed(player.solveMs)}
+                      </Text>
+                    </View>
+                    <Text style={styles.playerPoints}>+{pointFormat.format(player.points)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -684,31 +855,48 @@ function ResultAction({
         blocked && styles.disabled,
       ]}
     >
-      <Text style={[styles.resultButtonLabel, primary && styles.resultButtonPrimaryLabel]}>{label}</Text>
+      <Text style={[styles.resultButtonLabel, primary && styles.resultButtonPrimaryLabel]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
-function PlayerList({ room, phase }: { room: RoomView; phase: 'round' | 'intermission' | 'finished' }) {
+function PlayerList({
+  room,
+  phase,
+}: {
+  room: RoomView;
+  phase: 'round' | 'intermission' | 'finished';
+}) {
   return (
     <View style={styles.playerList}>
       {room.players.map((player) => {
         const detail =
           phase === 'finished'
-            ? `${player.solved}/${ROUND_COUNT} kelime${player.fastestWord ? ` · ${player.fastestWord}` : ''}`
+            ? `${player.solved}/${room.roundCount} kelime · ${player.attempts} tahmin${player.solved > 0 ? ` · ${elapsed(player.solveMs)}` : ''}`
             : phase === 'intermission'
-              ? `${player.roundAttempts} tahmin${player.roundSolveMs !== null ? ` · ${secondsFormat.format(player.roundSolveMs / 1000)} sn` : ''}`
-              : playerStatus[player.connected ? player.status : 'disconnected'];
+              ? `${player.roundAttempts} tahmin · ${player.roundSolveMs === null ? playerStatus[player.status] : elapsed(player.roundSolveMs)}`
+              : `${player.roundAttempts}/${MAX_ATTEMPTS} tahmin · ${playerStatus[player.roundSolved ? 'solved' : player.connected ? player.status : 'disconnected']}`;
         const closeness = phase === 'intermission' ? player.roundCloseness : undefined;
         return (
-          <View key={player.id} style={[styles.playerRow, player.id === room.playerId && styles.ownPlayerRow]}>
+          <View
+            key={player.id}
+            style={[styles.playerRow, player.id === room.playerId && styles.ownPlayerRow]}
+          >
             <Text style={styles.playerRank}>{player.rank}.</Text>
             <View style={styles.playerInfo}>
               <Text style={styles.playerName}>
                 {player.name}
                 {player.id === room.playerId ? ' · Sen' : ''}
+                {player.teamId ? ` · ${teamLabels[player.teamId]}` : ''}
               </Text>
               <Text style={styles.detail}>{detail}</Text>
+              {phase === 'finished' && player.fastestWord && player.fastestMs !== null && (
+                <Text style={styles.detail}>
+                  En hızlı · {player.fastestWord} · {elapsed(player.fastestMs)}
+                </Text>
+              )}
               {closeness && (
                 <Text style={styles.bonusDetail}>
                   Yakınlık · {closeness.correct} yeşil · {closeness.present} sarı
@@ -725,7 +913,10 @@ function PlayerList({ room, phase }: { room: RoomView; phase: 'round' | 'intermi
                   {Array.from({ length: MAX_ATTEMPTS }, (_, attempt) => (
                     <View
                       key={attempt}
-                      style={[styles.attemptDot, attempt < player.roundAttempts && styles.attemptDotUsed]}
+                      style={[
+                        styles.attemptDot,
+                        attempt < player.roundAttempts && styles.attemptDotUsed,
+                      ]}
                     />
                   ))}
                 </View>
@@ -744,6 +935,24 @@ function PlayerList({ room, phase }: { room: RoomView; phase: 'round' | 'intermi
 
 const styles = StyleSheet.create({
   roundStack: { gap: 11 },
+  teamList: { flexDirection: 'row', gap: 8 },
+  teamCard: { minWidth: 0, flex: 1 },
+  analysisToggle: {
+    minHeight: 38,
+    gap: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  analysisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: palette.line,
+    paddingTop: 7,
+  },
   roundCard: {
     padding: 11,
     gap: 9,
@@ -779,7 +988,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     backgroundColor: palette.inset,
   },
-  countdown: { color: palette.lime, fontSize: 48, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  countdown: {
+    color: palette.lime,
+    fontSize: 48,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
   title: { color: palette.text, fontSize: 23, fontWeight: '900', textAlign: 'center' },
   sectionTitle: { color: palette.text, fontSize: 17, fontWeight: '800' },
   detail: { color: palette.muted, fontSize: 12, lineHeight: 18 },
@@ -789,9 +1003,19 @@ const styles = StyleSheet.create({
   middleMetric: { alignItems: 'center', flex: 1.3 },
   rightMetric: { alignItems: 'flex-end' },
   metricLabel: { fontSize: 10, color: palette.muted, fontWeight: '800', letterSpacing: 0.6 },
-  metricValue: { fontSize: 21, color: palette.text, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  metricValue: {
+    fontSize: 21,
+    color: palette.text,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
   metricSmall: { fontSize: 13, color: palette.muted },
-  timerValue: { fontSize: 24, color: palette.lime, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  timerValue: {
+    fontSize: 24,
+    color: palette.lime,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
   untimedValue: { fontSize: 20 },
   finalTimer: { color: marked.present.color },
   timeTrack: { height: 3, borderRadius: 3, backgroundColor: palette.line, overflow: 'hidden' },
@@ -895,7 +1119,12 @@ const styles = StyleSheet.create({
   playerRank: { width: 24, color: palette.violet, fontSize: 14, fontWeight: '800' },
   playerInfo: { flex: 1 },
   playerName: { color: palette.text, fontSize: 14, fontWeight: '800' },
-  playerPoints: { color: palette.lime, fontSize: 15, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  playerPoints: {
+    color: palette.lime,
+    fontSize: 15,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
   podium: { flexDirection: 'row', gap: 6, alignItems: 'flex-end' },
   podiumCard: {
     flex: 1,

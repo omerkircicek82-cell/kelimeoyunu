@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowRight, Lock, Plus } from 'lucide-react';
-import { DEFAULT_ROUND_MODE, type RoundMode } from '@arena/shared';
+import { ArrowRight, Eye, Plus } from 'lucide-react';
 import { rememberTicket, request } from './connection';
-import { RoundModeField } from './ui';
+import { defaultRoomRules, RoomRules } from './RoomRules';
 
 export type EntryMode = 'create' | 'join';
 
@@ -17,20 +16,22 @@ export function RoomForm({
   mode,
   inviteCode,
   accountName,
+  watchOnly = false,
   entered,
   enabled,
 }: {
   mode: EntryMode;
   inviteCode?: string;
   accountName?: string;
+  watchOnly?: boolean;
   entered: (code: string) => void;
   enabled: boolean;
 }) {
   const [name, setName] = useState('');
   const [roomName, setRoomName] = useState('');
   const [code, setCode] = useState(inviteCode ?? '');
-  const [capacity, setCapacity] = useState(8);
-  const [roundMode, setRoundMode] = useState<RoundMode>(DEFAULT_ROUND_MODE);
+  const [rules, setRules] = useState(defaultRoomRules);
+  const [spectator, setSpectator] = useState(watchOnly);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -45,10 +46,11 @@ export function RoomForm({
           ? await request('room:create', {
               playerName: accountName ?? name.trim(),
               name: roomName.trim() || undefined,
-              maxPlayers: capacity,
-              roundMode,
+              ...rules,
             })
-          : await request('room:join', { playerName: accountName ?? name.trim(), code });
+          : spectator
+            ? await request('room:spectate', { code })
+            : await request('room:join', { playerName: accountName ?? name.trim(), code });
       rememberTicket(ticket);
       entered(ticket.room.code);
     } catch (reason) {
@@ -60,19 +62,33 @@ export function RoomForm({
 
   return (
     <form className="room-form" onSubmit={submit}>
-      <label>
-        Oyuncu adı
-        <input
-          value={accountName ?? name}
-          readOnly={Boolean(accountName)}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Arenada görünen adın"
-          minLength={2}
-          maxLength={24}
-          required
-          autoComplete="nickname"
-        />
-      </label>
+      {mode === 'join' && (
+        <label>
+          Katılım biçimi
+          <select
+            value={spectator ? 'spectator' : 'player'}
+            onChange={(event) => setSpectator(event.currentTarget.value === 'spectator')}
+          >
+            <option value="player">Oyuncu olarak katıl</option>
+            <option value="spectator">İzleyici olarak katıl</option>
+          </select>
+        </label>
+      )}
+      {!spectator && (
+        <label>
+          Oyuncu adı
+          <input
+            value={accountName ?? name}
+            readOnly={Boolean(accountName)}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Arenada görünen adın"
+            minLength={2}
+            maxLength={24}
+            required
+            autoComplete="nickname"
+          />
+        </label>
+      )}
       {mode === 'create' ? (
         <>
           <label>
@@ -84,25 +100,7 @@ export function RoomForm({
               maxLength={40}
             />
           </label>
-          <div className="form-columns">
-            <label>
-              Görünürlük
-              <span className="locked-field">
-                <Lock size={15} /> Özel oda
-              </span>
-            </label>
-            <label>
-              Oyuncu kapasitesi
-              <select value={capacity} onChange={(event) => setCapacity(Number(event.target.value))}>
-                {Array.from({ length: 7 }, (_, index) => index + 2).map((size) => (
-                  <option key={size} value={size}>
-                    {size} oyuncu
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <RoundModeField value={roundMode} onChange={setRoundMode} />
+          <RoomRules value={rules} onChange={setRules} />
         </>
       ) : (
         <label>
@@ -127,8 +125,8 @@ export function RoomForm({
         </p>
       )}
       <button type="submit" className="button button-primary form-submit" disabled={busy || !enabled}>
-        {mode === 'create' ? <Plus size={18} /> : <ArrowRight size={18} />}
-        {busy ? 'Bağlanıyor…' : mode === 'create' ? 'Oda oluştur' : 'Odaya katıl'}
+        {mode === 'create' ? <Plus size={18} /> : spectator ? <Eye size={18} /> : <ArrowRight size={18} />}
+        {busy ? 'Bağlanıyor…' : mode === 'create' ? 'Oda oluştur' : spectator ? 'Odayı izle' : 'Odaya katıl'}
       </button>
     </form>
   );

@@ -308,3 +308,88 @@
     animation: none;
   }
 }
+
+.member-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  color: var(--arena-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.league-label {
+  display: inline-flex;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.league-bronze {
+  color: #ffceba;
+  background: #50302d;
+}
+.league-silver {
+  color: #e5edff;
+  background: #3b4355;
+}
+.league-gold {
+  color: #ffe1a3;
+  background: #583815;
+}
+.league-diamond {
+  color: #e0faff;
+  background: #234656;
+}
+
+.member-metrics dt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.member-badges {
+  padding: 7px;
+  border: 1px solid var(--arena-line);
+  border-radius: 8px;
+}
+.member-badges summary {
+  padding: 2px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+.member-badges ul {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
+}
+.member-badges li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+}
+.member-badges svg {
+  color: var(--arena-amber);
+  flex: none;
+}
+.member-badges p {
+  color: var(--arena-muted);
+  font-size: 12px;
+}
+
+.member-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  color: var(--arena-muted);
+  font-size: 13px;
+}
+.member-filter select {
+  width: auto;
+  min-height: 36px;
+}

@@ -8,7 +8,8 @@ import { ArenaApp } from "./src/ArenaApp";
 import { parseServerUrl, inviteCodeFromUrl } from "./services/server";
 import { useArenaConnection } from "./services/useArenaConnection";
 import { useMembership } from "./services/useMembership";
-import { MemberAuth, MemberLeaderboard, NativeModeHome } from "./src/MemberScreens";
+import { MemberAuth, MemberLeaderboard, MemberProfile, NativeModeHome } from "./src/MemberScreens";
+import { DailyScreen } from "./src/DailyScreen";
 import { SoloGame } from "./src/SoloGame";
 
 const serverPreference = "arena.server-url";
@@ -90,13 +91,14 @@ function ServerSetup({ initialValue, onSave, goBack }: { initialValue: string; o
   );
 }
 
-type Scene = "home" | "online" | "offline" | "solo" | "account" | "leaderboard" | "server";
+type Scene = "home" | "online" | "offline" | "solo" | "account" | "profile" | "leaderboard" | "daily" | "server";
 
 function MobileApp() {
   const [server, setServer] = useState<string | null>(buildServer ? parseServerUrl(buildServer) : null);
   const [ready, setReady] = useState(Boolean(buildServer));
   const [scene, setScene] = useState<Scene>("home");
   const [afterServer, setAfterServer] = useState<Scene>("home");
+  const [afterAccount, setAfterAccount] = useState<"home" | "daily">("home");
   const [joinCode, setJoinCode] = useState<string | null>(null);
   const [solo, setSolo] = useState<{ key: number; mode: RoundMode; ticket?: SoloChallengeTicket }>({ key: 0, mode: "timed" });
   const member = useMembership(server);
@@ -146,10 +148,20 @@ function MobileApp() {
     setScene("server");
   }
 
-  function openAccount() {
-    if (profile) setScene("leaderboard");
-    else if (!server) configureServer("account");
+  function signIn(next: "home" | "daily") {
+    setAfterAccount(next);
+    if (!server) configureServer("account");
     else setScene("account");
+  }
+
+  function openAccount() {
+    if (profile) setScene("profile");
+    else signIn("home");
+  }
+
+  function openDaily() {
+    if (profile && server) setScene("daily");
+    else signIn("daily");
   }
 
   function startSolo(mode: RoundMode) {
@@ -178,14 +190,39 @@ function MobileApp() {
       />
     );
   }
-  if (scene === "account") {
-    return <MemberAuth goBack={home} onLogin={async credentials => {
+  if (scene === "account" || (scene === "daily" && !profile)) {
+    const next = scene === "daily" ? "daily" : afterAccount;
+    return <MemberAuth goBack={home} daily={next === "daily"} onLogin={async credentials => {
       await member.authenticate("login", credentials);
-      setScene("home");
+      setScene(next);
     }} onRegister={async credentials => {
       await member.authenticate("register", credentials);
-      setScene("home");
+      setScene(next);
     }} />;
+  }
+  if (scene === "profile" && profile) {
+    return (
+      <MemberProfile
+        account={profile}
+        goBack={home}
+        openLeaderboard={() => setScene("leaderboard")}
+        onLogout={async () => { await member.logout(); home(); }}
+      />
+    );
+  }
+  if (scene === "daily" && profile) {
+    return (
+      <DailyScreen
+        username={profile.username}
+        goBack={home}
+        operations={{
+          load: member.loadDaily,
+          start: member.startDaily,
+          guess: member.guessDaily,
+          next: member.nextDaily,
+        }}
+      />
+    );
   }
   if (scene === "leaderboard") {
     return (
@@ -237,7 +274,7 @@ function MobileApp() {
 
   return (
     <View style={styles.background}>
-      <NativeModeHome openOnline={() => setScene("online")} openOffline={() => setScene("offline")} />
+      <NativeModeHome openOnline={() => setScene("online")} openOffline={() => setScene("offline")} openDaily={openDaily} />
       <SafeAreaView edges={["bottom"]} style={styles.hubFooter}>
         <Text style={styles.description}>
           {profile ? `${profile.username} · ${profile.rating.toLocaleString("tr-TR")} genel puan` : "Misafir · Eğlence amaçlı oyun"}

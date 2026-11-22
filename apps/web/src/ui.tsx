@@ -17,7 +17,8 @@ import {
   CLOSENESS_PRESENT_POINTS,
   FINAL_GUESS_MS,
   MAX_ATTEMPTS,
-  ROUND_MS,
+  ROUND_COUNT_MIN,
+  ROUND_COUNT_MAX,
   type Mark,
   type RoundMode,
 } from '@arena/shared';
@@ -132,7 +133,11 @@ export function Header({
           >
             {preferences.theme === 'dark' ? <Sun size={19} /> : <Moon size={19} />}
           </button>
-          <button className="nav-profile account-button" onClick={profile} aria-label={accountName ? 'Hesabım' : 'Giriş / Kayıt'}>
+          <button
+            className="nav-profile account-button"
+            onClick={profile}
+            aria-label={accountName ? 'Hesabım' : 'Giriş / Kayıt'}
+          >
             <CircleUserRound size={18} />
             <span className="account-label">{accountName ? 'Hesabım' : 'Giriş / Kayıt'}</span>
             <span className="account-label-compact">{accountName ? 'Hesap' : 'Giriş'}</span>
@@ -189,19 +194,20 @@ export function Help() {
   return (
     <div className="help-copy">
       <p>
-        Bir oda aç veya arkadaşının oda koduyla katıl. Her maçta aynı beş kelimeyi çözmek için yarışacaksınız.
+        Bir oda aç veya arkadaşının oda koduyla katıl. Oda ayarına göre {ROUND_COUNT_MIN}–{ROUND_COUNT_MAX}{' '}
+        kelimede aynı gizli kelimeleri çözmek için yarışın.
       </p>
       <ol>
         <li>Her turda {MAX_ATTEMPTS} tahmin hakkın var.</li>
         <li>
-          Süreli turlar {ROUND_MS / 1000} saniyeyle başlar. Süresiz turda sayaç ilk doğru tahminde başlar. Her
-          iki modda ilk doğru tahmin, diğer oyuncular için bir kez {FINAL_GUESS_MS / 1000} saniyelik son şans
-          başlatır.
+          Süreli turlar oda sahibinin seçtiği süreyle başlar. Süresiz turda sayaç ilk doğru tahminde başlar.
+          Her iki modda ilk doğru tahmin, diğer oyuncular için bir kez {FINAL_GUESS_MS / 1000} saniyelik son
+          şans başlatır.
         </li>
         <li>Tahminini yazıp Enter tuşuna bas. Renkler bir sonraki tahminin için ipucu verir.</li>
         <li>
           Her doğru çözüm taban puanı ve deneme bonusu kazandırır. Hız bonusu süreli moda özeldir ve turun
-          başındaki {ROUND_MS / 1000} saniye üzerinden hesaplanır.
+          başlangıç süresi üzerinden hesaplanır.
         </li>
         <li>
           Kimse çözemezse her oyuncunun en iyi geçerli tahmini karşılaştırılır. Doğru yerdeki her harf{' '}
@@ -225,26 +231,6 @@ export function Help() {
 }
 
 export const roundModeLabel: Record<RoundMode, string> = { timed: 'Süreli', untimed: 'Süresiz' };
-
-export function RoundModeField({
-  value,
-  onChange,
-}: {
-  value: RoundMode;
-  onChange: (mode: RoundMode) => void;
-}) {
-  return (
-    <label>
-      Tur modu
-      <select value={value} onChange={(event) => onChange(event.currentTarget.value as RoundMode)}>
-        <option value="timed">
-          {roundModeLabel.timed} · {ROUND_MS / 1000} saniye
-        </option>
-        <option value="untimed">{roundModeLabel.untimed}</option>
-      </select>
-    </label>
-  );
-}
 
 const markLabels: Record<Mark, string> = {
   correct: 'Doğru yerde',

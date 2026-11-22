@@ -1,5 +1,14 @@
 export const ROUND_COUNT = 5;
 export const ROUND_MS = 90_000;
+export const ROUND_COUNT_MIN = 3;
+export const ROUND_COUNT_MAX = 10;
+export const ROUND_SECONDS_MIN = 30;
+export const ROUND_SECONDS_MAX = 300;
+export const GAME_MODES = ["ffa", "2v2", "3v3"] as const;
+export type GameMode = (typeof GAME_MODES)[number];
+export const TEAM_IDS = ["a", "b"] as const;
+export type TeamId = (typeof TEAM_IDS)[number];
+export const TEAM_SIZE = { ffa: 0, "2v2": 2, "3v3": 3 } satisfies Record<GameMode, number>;
 export const FINAL_GUESS_MS = 30_000;
 export const ROUND_MODES = ["timed", "untimed"] as const;
 export type RoundMode = (typeof ROUND_MODES)[number];
@@ -42,6 +51,7 @@ export interface Guess {
 export interface PlayerView {
   id: string;
   name: string;
+  teamId: TeamId | null;
   ready: boolean;
   connected: boolean;
   rank: number;
@@ -55,7 +65,35 @@ export interface PlayerView {
   roundPoints: number;
   roundCloseness?: ClosenessScore;
   roundAttempts: number;
+  roundSolved: boolean;
   roundSolveMs: number | null;
+}
+
+export interface TeamView {
+  id: TeamId;
+  points: number;
+  rank: number;
+  roundPoints: number;
+  solved: number;
+}
+
+export interface RoundPlayerAnalysis {
+  playerId: string;
+  name: string;
+  teamId: TeamId | null;
+  status: PlayerStatus;
+  points: number;
+  attempts: number;
+  solveMs: number | null;
+  elapsedMs: number;
+}
+
+export interface RoundAnalysis {
+  round: number;
+  answer: string;
+  startedAt: number;
+  endedAt: number;
+  players: RoundPlayerAnalysis[];
 }
 
 export interface RoomView {
@@ -64,14 +102,22 @@ export interface RoomView {
   maxPlayers: number;
   hostId: string;
   playerId: string;
+  viewerRole: "player" | "spectator";
+  spectatorCount: number;
   phase: Phase;
   roundMode: RoundMode;
+  gameMode: GameMode;
+  roundCount: number;
+  roundSeconds: number;
   finalCountdown: boolean;
   matchId: string | null;
   round: number;
   deadline: number | null;
   serverNow: number;
   players: PlayerView[];
+  teams: TeamView[];
+  winnerTeamId: TeamId | null;
+  roundAnalyses: RoundAnalysis[];
   guesses: Guess[];
   answer: string | null;
 }
@@ -92,20 +138,29 @@ export type Reply<T extends object = Record<never, never>> =
   | ({ ok: true } & T)
   | { ok: false; error: string };
 
+export interface RoomRules {
+  roundMode?: RoundMode;
+  gameMode?: GameMode;
+  roundCount?: number;
+  roundSeconds?: number;
+}
+
 export interface Requests {
-  "room:create": { playerName: string; name?: string; maxPlayers: number; roundMode?: RoundMode };
+  "room:create": RoomRules & { playerName: string; name?: string; maxPlayers: number };
   "room:join": { playerName: string; code: string };
+  "room:spectate": { code: string };
   "room:resume": { code: string; token: string };
   "room:leave": Record<string, never>;
   "room:player-ready": { ready: boolean };
   "room:player-kick": { playerId: string };
-  "room:settings": { name: string; maxPlayers: number; roundMode?: RoundMode };
+  "room:settings": RoomRules & { name: string; maxPlayers: number };
+  "room:team": { teamId: TeamId };
   "game:start": Record<string, never>;
   "game:restart": Record<string, never>;
   "game:submit-guess": GuessRequest;
 }
 
-type TicketEvent = "room:create" | "room:join" | "room:resume";
+type TicketEvent = "room:create" | "room:join" | "room:spectate" | "room:resume";
 
 export type ResponseFor<Event extends keyof Requests> = Event extends TicketEvent
   ? Reply<RoomTicket>
@@ -143,6 +198,7 @@ export interface AccountProfile {
   username: string;
   rating: number;
   ratedGames: number;
+  progression?: PlayerProgression;
 }
 
 export interface AuthReply {
@@ -174,3 +230,8 @@ export function ratedRoundDelta(guesses: readonly Guess[], solved: boolean) {
   }));
   return (solved ? RATING_ROUND_POINTS : -RATING_ROUND_POINTS) + best;
 }
+import type { PlayerProgression } from "./progression";
+
+
+export * from "./progression";
+export type * from "./daily";

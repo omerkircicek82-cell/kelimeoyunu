@@ -32,7 +32,7 @@ export class History {
   }
 
   async check() {
-    await this.db.$queryRaw`SELECT "roundMode" FROM "GameRoom" LIMIT 1`;
+    await this.db.$queryRaw`SELECT "roundCount" FROM "GameRoom" LIMIT 1`;
     if (this.failed) throw new Error("Maç geçmişi yazılamadı.");
     return "postgresql" as const;
   }
@@ -93,7 +93,10 @@ async function write(db: PrismaClient, event: HistoryEvent) {
       break;
     case "match:start":
       await db.gameMatch.createMany({
-        data: [{ id: event.matchId, roomId: event.roomId, roundMode: event.roundMode }],
+        data: [{
+          id: event.matchId, roomId: event.roomId, roundMode: event.roundMode, gameMode: event.gameMode,
+          roundCount: event.roundCount, roundSeconds: event.roundSeconds,
+        }],
         skipDuplicates: true,
       });
       break;
@@ -118,7 +121,13 @@ async function write(db: PrismaClient, event: HistoryEvent) {
     }
     case "match:end":
       await db.$transaction([
-        db.gameMatch.update({ where: { id: event.matchId }, data: { endedAt: new Date(event.endedAt) } }),
+        db.gameMatch.update({
+          where: { id: event.matchId },
+          data: {
+            endedAt: new Date(event.endedAt), winnerTeamId: event.winnerTeamId,
+            teamResults: event.teamResults.map(team => ({ ...team })),
+          },
+        }),
         db.matchResult.createMany({
           data: event.results.map(result => ({ ...result, matchId: event.matchId })),
           skipDuplicates: true,

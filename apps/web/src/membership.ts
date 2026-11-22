@@ -1,16 +1,22 @@
 import { useCallback, useRef, useState } from 'react';
-import type { AccountProfile, AuthReply, LeaderboardEntry } from '@arena/shared';
+import type { AccountProfile, AuthReply, LeaderboardEntry, LeagueId } from '@arena/shared';
 
 type Credentials = { username: string; password: string };
 const ACCOUNT_KEY = 'kelime-arenasi:account';
 
 export class AccountRequestError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
     super(message);
   }
 }
 
-export async function accountApi<T>(path: string, { token, body }: { token?: string; body?: object } = {}): Promise<T> {
+export async function accountApi<T>(
+  path: string,
+  { token, body }: { token?: string; body?: object } = {},
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
   try {
@@ -30,7 +36,9 @@ export async function accountApi<T>(path: string, { token, body }: { token?: str
       throw new AccountRequestError(
         response.status === 404
           ? 'Sunucudaki hesap özelliği güncellenmeli.'
-          : typeof payload?.message === 'string' ? payload.message : 'Sunucu isteği tamamlanamadı.',
+          : typeof payload?.message === 'string'
+            ? payload.message
+            : 'Sunucu isteği tamamlanamadı.',
         response.status,
       );
     }
@@ -47,8 +55,13 @@ export async function accountApi<T>(path: string, { token, body }: { token?: str
 function readSession(): AuthReply | null {
   try {
     const value: AuthReply | null = JSON.parse(sessionStorage.getItem(ACCOUNT_KEY) ?? 'null');
-    if (value && /^[A-Za-z0-9_-]{43}$/.test(value.token) &&
-      typeof value.profile?.id === 'string' && typeof value.profile.username === 'string') return value;
+    if (
+      value &&
+      /^[A-Za-z0-9_-]{43}$/.test(value.token) &&
+      typeof value.profile?.id === 'string' &&
+      typeof value.profile.username === 'string'
+    )
+      return value;
   } catch {
     /* A new browser session can start as a guest. */
   }
@@ -79,18 +92,26 @@ export function useMembership() {
     const version = ++requestVersion.current;
     try {
       const { profile } = await accountApi<{ profile: AccountProfile }>('auth/me', { token: value.token });
-      if (version === requestVersion.current && current.current?.token === value.token) update({ ...value, profile });
+      if (version === requestVersion.current && current.current?.token === value.token)
+        update({ ...value, profile });
     } catch (error) {
-      if (error instanceof AccountRequestError && error.status === 401 && current.current?.token === value.token) {
+      if (
+        error instanceof AccountRequestError &&
+        error.status === 401 &&
+        current.current?.token === value.token
+      ) {
         invalidate();
       }
     }
   }, [invalidate, update]);
 
-  const authenticate = useCallback(async (kind: 'login' | 'register', credentials: Credentials) => {
-    const reply = await accountApi<AuthReply>(`auth/${kind}`, { body: credentials });
-    update(reply);
-  }, [update]);
+  const authenticate = useCallback(
+    async (kind: 'login' | 'register', credentials: Credentials) => {
+      const reply = await accountApi<AuthReply>(`auth/${kind}`, { body: credentials });
+      update(reply);
+    },
+    [update],
+  );
 
   const logout = useCallback(async () => {
     const value = current.current;
@@ -99,10 +120,18 @@ export function useMembership() {
     if (current.current?.token === value.token) invalidate();
   }, [invalidate]);
 
-  const loadEntries = useCallback(async () => {
-    await refresh();
-    return (await accountApi<{ entries: LeaderboardEntry[] }>('leaderboard', { token: current.current?.token })).entries;
-  }, [refresh]);
+  const loadEntries = useCallback(
+    async (league?: LeagueId) => {
+      await refresh();
+      return (
+        await accountApi<{ entries: LeaderboardEntry[] }>(
+          league ? `leaderboard?league=${league}` : 'leaderboard',
+          { token: current.current?.token },
+        )
+      ).entries;
+    },
+    [refresh],
+  );
 
   return { session, refresh, invalidate, authenticate, logout, loadEntries };
 }

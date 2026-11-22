@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   ArrowUpRight,
+  CalendarDays,
   Check,
   CircleHelp,
   DoorOpen,
@@ -15,7 +16,7 @@ import { evaluateGuess } from '@arena/game-engine';
 import { MAX_ATTEMPTS, WORD_LENGTH } from '@arena/shared';
 import './landing.css';
 
-type Mode = 'create' | 'join' | 'offline' | 'help';
+type Mode = 'create' | 'join' | 'offline' | 'daily' | 'help';
 
 const exampleKey = 'arena-landing-example';
 const examples = [
@@ -128,8 +129,8 @@ export function Landing({ open }: { open: (mode: Mode) => void }) {
           Kelimeleri çöz, zamana karşı yarış, arkadaşlarını geride bırak!
         </p>
         <p className="arena-landing__description">
-          Arkadaşlarınla süreli veya süresiz turlarda yarış. Tek başına çevrimdışı oynayarak
-          beş harfli kelimeleri de çözebilirsin.
+          Arkadaşlarınla süreli veya süresiz turlarda yarış. Tek başına çevrimdışı oynayarak beş harfli
+          kelimeleri de çözebilirsin.
         </p>
 
         <div className="arena-landing__actions">
@@ -157,6 +158,14 @@ export function Landing({ open }: { open: (mode: Mode) => void }) {
           >
             <WifiOff size={18} aria-hidden="true" />
             Çevrimdışı oyna
+          </button>
+          <button
+            type="button"
+            className="arena-landing__button arena-landing__button--secondary"
+            onClick={() => open('daily')}
+          >
+            <CalendarDays size={18} aria-hidden="true" />
+            Günlük mücadele
           </button>
         </div>
         <button type="button" className="arena-landing__help" onClick={() => open('help')}>

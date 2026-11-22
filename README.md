@@ -1,8 +1,10 @@
 # Kelime Arenası
 
-Arkadaşların davet koduyla aynı odaya katıldığı, gerçek zamanlı bir Türkçe kelime oyunu. Özel odalar 2–8 oyuncuyu destekler. Bir maçta oyuncular beş farklı kelimeyi, tur başına beş tahmin hakkıyla çözmeye çalışır.
+Arkadaşların davet koduyla aynı odaya katıldığı, gerçek zamanlı bir Türkçe kelime oyunu. Oda sahibi bireysel maçlarda 2–8 oyuncu sınırı, tüm maçlarda 3–10 tur ve süreli modda 30–300 saniyelik tur süresi seçebilir. Varsayılan maç beş tur ve tur başına 90 saniyedir. Her kelime için beş tahmin hakkı vardır.
 
-Oda sahibi oyun başlamadan önce **Süreli** veya **Süresiz** modu seçebilir. Süreli tur 90 saniyeyle başlar. Süresiz turda oyuncular ilk doğru tahmine kadar sayaçsız oynar. İki modda da ilk doğru tahmin, kalan oyuncular için bir defaya mahsus 30 saniyelik son şans başlatır. Süreli modun hız bonusu turun ilk 90 saniyesine göre hesaplanır. Süresiz modda çözüm ve tahmin bonusları uygulanır.
+Oda sahibi oyun başlamadan önce **Süreli** veya **Süresiz** modu seçebilir. Süresiz turda oyuncular ilk doğru tahmine kadar sayaçsız oynar. İki modda da ilk doğru tahmin, kalan oyuncular için bir defaya mahsus 30 saniyelik son şans başlatır. Süreli modun hız bonusu ayarlanan tur süresine göre hesaplanır. Süresiz modda çözüm ve tahmin bonusları uygulanır.
+
+**2v2** ve **3v3** odalarında oyuncular iki takıma ayrılır. Maç için her iki takımda da seçilen sayıda oyuncu gerekir. Takım skoru, takım üyelerinin puanlarının toplamıdır. Oda koduyla izleyici olarak da katılabilirsiniz. Maç sırasında hem oyuncular hem izleyiciler her oyuncunun kaç tahmin yaptığını ve kelimeyi çözüp çözmediğini takip edebilir. Tahmin harflerini yalnızca yazan oyuncu görür. Tur ve maç sonuçlarında her kelime için süre, tahmin sayısı ve puan yer alır.
 
 Bir turda kimse kelimeyi çözemezse her oyuncunun en yüksek puanlı tahmin satırı karşılaştırılır. Yeşil harf 50, sarı harf 25 puan değerindedir. Sıfırdan yüksek en iyi sonucu alan oyuncuların her biri bu puanın tamamını maç toplamına ekler. Kelime çözülürse çözüm puanları geçerlidir.
 
@@ -17,6 +19,10 @@ Web’de üst menüdeki **Giriş / Kayıt** düğmesiyle hesap oluşturabilir ve
 Web ana sayfasındaki **Çevrimdışı oyna** düğmesi, süreli veya süresiz tek kişilik oyunu açar. Önceden bağlantı kurup hesapla bilet aldıysanız tarayıcı sonuçları yerelde bekletir ve bağlantı geri gelince aynı genel puana işler. Yerel ağın HTTP adresinde oyun açık sekmede çalışır. HTTPS veya `localhost` üzerinden ilk yükleme tamamlandıktan sonra tarayıcı oyunu bağlantısız olarak yeniden açabilir.
 
 Kelime çözülürse 24 puan eklenir, çözülmezse 24 puan düşer. En iyi tahmin satırındaki her yeşil harf 3, sarı harf 1 puan ekler. Genel puan sıfırın altına inmez. Kayıtlı Android cihazları oyun sunucusundan en fazla sekiz açık çevrimdışı bilet alır. Tamamlanan biletli oyunlar bağlantı geri gelince bir kez eşitlenir. Biletler yedi gün boyunca geçerlidir. Çevrimdışı istemci cevabı yerel olarak tuttuğu için bu sonuçlar, online maçlarla aynı düzeyde hileye dayanıklı değildir.
+
+Genel puan **Bronz**, **Gümüş**, **Altın** ve **Elmas** liglerini belirler. Gümüş 1.100, Altın 1.300, Elmas 1.600 puanda başlar. Hesap ekranında kazanılan rozetler, oyuncu unvanı ve art arda kelime çözülen dereceli tur sayısı gösterilir.
+
+**Günlük mücadele** İstanbul tarihi değiştiğinde yenilenir. Hesabınıza girip günün sırasıyla gelen beş ortak kelimesini, kelime başına beş tahmin hakkıyla çözebilirsiniz. Oyun ilerlemeyi kaydeder ve kaldığınız yerden devam edebilirsiniz. Beş turu bitirince günlük sıralamaya girersiniz. Sıralama önce çözülen kelime sayısına, ardından tahmin sayısından kazanılan günlük puana bakar.
 
 ## Gereksinimler
 
@@ -96,10 +102,10 @@ Veritabanı volume'ünü yedekleyin. API'nin aktif oda ve maç durumu bellekte t
 
 `apps/web` React ve Vite istemcisidir. `apps/api` NestJS REST ve Socket.IO katmanlarını, oda yönetimini ve Prisma veri erişimini içerir. Platformdan bağımsız protokol tipleri ve oyun kuralları sırasıyla `packages/shared` ve `packages/game-engine` içinde yer alır.
 
-Sunucu tur saatini, kelime doğrulamayı ve puan hesaplamayı yönetir. Oyuncular kendi tahmin geçmişini ve diğer oyuncuların halka açık skor ve tur durumunu alır. Doğru kelime tur bitince açıklanır. Şu an misafir oturumları ve özel davet odaları çalışır. Hesap sistemi, herkese açık oda keşfi ve Redis ile çoklu API instance desteği sonraki sürümlere bırakılmıştır.
+Sunucu tur saatini, kelime doğrulamayı ve puan hesaplamayı yönetir. Oyuncular kendi tahmin geçmişini ve diğer oyuncuların skor ve tur durumunu alır. Doğru kelime tur bitince açıklanır. Özel davet odalarında hesapla veya misafir olarak oynanabilir.
 
 ### API ve Socket.IO
 
-[Ortak protokol tipleri](packages/shared/src/index.ts) komutları, yanıtları ve sunucu olaylarını tanımlar. İstemci `room:create` veya `room:join` ile bir oturum anahtarı alır. Yeniden bağlanırken `room:resume` kullanır ve `room:update` olayından güncel durumunu geri yükler.
+[Ortak protokol tipleri](packages/shared/src/index.ts) komutları, yanıtları ve sunucu olaylarını tanımlar. İstemci `room:create`, `room:join` veya `room:spectate` ile bir oturum anahtarı alır. Yeniden bağlanırken `room:resume` kullanır ve `room:update` olayından güncel durumunu geri yükler.
 
 `game:submit-guess` komutu maç, tur ve benzersiz istek kimliğini taşır. Yanıt yalnızca gönderen oyuncuya iletilir. Ağ zaman aşımından sonra aynı tahmin yeniden gönderilecekse aynı istek kimliği kullanılmalıdır.
